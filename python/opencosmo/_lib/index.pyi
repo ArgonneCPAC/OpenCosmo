@@ -27,3 +27,6 @@ def project_chunked_on_simple(
     chunk_starts: IndexArray,
     chunk_sizes: IndexArray,
 ) -> IndexArray: ...
+def union_chunked(
+    a_start: IndexArray, a_size: IndexArray, b_start: IndexArray, b_size: IndexArray
+) -> tuple[IndexArray, IndexArray]: ...

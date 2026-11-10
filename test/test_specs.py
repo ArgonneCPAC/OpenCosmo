@@ -10,6 +10,7 @@ from opencosmo.io.specs import (
     DatasetSpec,
     HealpixMapSpec,
     LightconeSpec,
+    ParticleCollectionSpec,
     StructureCollectionSpec,
     group_by_scope,
     match_spec,
@@ -176,6 +177,47 @@ class TestMatchSpec:
             ),
         )
         assert isinstance(match_spec(layouts), LightconeSpec)
+
+    def test_snapshot_particles(self) -> None:
+        layouts = (
+            _file(
+                "/sp.hdf5",
+                *(
+                    _group(path=f"/{name}", data_type="snapshot_particles")
+                    for name in ("agn_particles", "dm_particles", "gas_particles")
+                ),
+            ),
+        )
+        assert isinstance(match_spec(layouts), ParticleCollectionSpec)
+        assert list(group_by_scope(layouts)) == ["/"]
+
+    def test_single_snapshot_particle_type_is_particle_collection(self) -> None:
+        layouts = (
+            _file(
+                "/sp.hdf5", _group(path="/dm_particles", data_type="snapshot_particles")
+            ),
+        )
+        assert isinstance(match_spec(layouts), ParticleCollectionSpec)
+
+    def test_snapshot_particles_from_two_files_do_not_match(self) -> None:
+        layouts = tuple(
+            _file(
+                f"/sp{i}.hdf5",
+                _group(path="/dm_particles", data_type="snapshot_particles"),
+            )
+            for i in range(2)
+        )
+        assert match_spec(layouts) is None
+
+    def test_snapshot_and_halo_particles_do_not_match(self) -> None:
+        layouts = (
+            _file(
+                "/p.hdf5",
+                _group(path="/dm_particles", data_type="snapshot_particles"),
+                _group(path="/gas_particles", data_type="halo_particles"),
+            ),
+        )
+        assert match_spec(layouts) is None
 
 
 class TestPrecedence:

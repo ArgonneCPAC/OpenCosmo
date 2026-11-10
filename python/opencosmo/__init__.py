@@ -1,6 +1,7 @@
 from .collection import (
     HealpixMap,
     Lightcone,
+    ParticleCollection,
     SimulationCollection,
     StructureCollection,
 )
@@ -15,6 +16,7 @@ __all__ = [
     "Dataset",
     "HealpixMap",
     "Lightcone",
+    "ParticleCollection",
     "SimulationCollection",
     "StructureCollection",
     "__version__",

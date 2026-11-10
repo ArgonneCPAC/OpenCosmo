@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 from uuid import uuid1
 
 import h5py
@@ -23,7 +23,7 @@ from opencosmo.spatial.region import HealpixRegion
 from opencosmo.spatial.utils import combine_upwards
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
     from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
     from opencosmo.io.schema import Schema
@@ -142,7 +142,7 @@ def get_region(spatial_index: SpatialIndex, region: Region | None) -> Region:
 
 
 def partition_index(
-    n_partitions: int, counts: h5py.Group, min_level: int
+    n_partitions: int, counts: Mapping[str, Any], min_level: int
 ) -> tuple[list[np.ndarray], int]:
     levels = [int(key.split("_")[1]) for key in counts]
     highest_level = max(levels)
@@ -216,7 +216,7 @@ def project_on_index(
 def partition(
     spatial_index: SpatialIndex,
     n_partitions: int,
-    counts: h5py.Group,
+    counts: Mapping[str, Any],
     min_level: int | None = None,
 ) -> Sequence[TreePartition]:
     min_level = 0 if min_level is None else min_level

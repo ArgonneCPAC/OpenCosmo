@@ -734,6 +734,11 @@ def is_particle_group(group: GroupLayout) -> bool:
     return "particle" in group_data_type(group)
 
 
+def is_snapshot_particle_group(group: GroupLayout) -> bool:
+    """Return True if the group is a particle type of a snapshot particle file."""
+    return group_data_type(group) == "snapshot_particles"
+
+
 def is_properties_group(group: GroupLayout) -> bool:
     """Return True if the group's data_type is halo_properties or galaxy_properties."""
     return group_data_type(group) in ("halo_properties", "galaxy_properties")

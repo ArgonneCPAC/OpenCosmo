@@ -404,6 +404,78 @@ pub(crate) mod index {
         PyList::new(py, output.drain(0..).map(|a| a.into_pyarray(py)))
     }
 
+    #[pyfunction(name = "union_chunked")]
+    fn union_chunked_py<'py>(
+        py: Python<'py>,
+        a_start: &Bound<'_, PyAny>,
+        a_size: &Bound<'_, PyAny>,
+        b_start: &Bound<'_, PyAny>,
+        b_size: &Bound<'_, PyAny>,
+    ) -> PyResult<(Bound<'py, PyArray1<i64>>, Bound<'py, PyArray1<i64>>)> {
+        let (a_start_arr, a_size_arr) = unpack_chunked_index(a_start, a_size)?;
+        let (b_start_arr, b_size_arr) = unpack_chunked_index(b_start, b_size)?;
+        let (starts, sizes) = union_chunked(
+            a_start_arr.as_array(),
+            a_size_arr.as_array(),
+            b_start_arr.as_array(),
+            b_size_arr.as_array(),
+        )?;
+        Ok((starts.into_pyarray(py), sizes.into_pyarray(py)))
+    }
+
+    /// Union of two chunked indices as sorted, disjoint, non-adjacent chunks.
+    /// Zero-size chunks are dropped. Chunk ends and merged sizes are assumed
+    /// to fit in i64.
+    fn union_chunked(
+        a_start: ArrayView1<'_, i64>,
+        a_size: ArrayView1<'_, i64>,
+        b_start: ArrayView1<'_, i64>,
+        b_size: ArrayView1<'_, i64>,
+    ) -> PyResult<(Array1<i64>, Array1<i64>)> {
+        let mut ranges = Vec::with_capacity(a_start.len() + b_start.len());
+        for (&start, &size) in
+            zip(a_start.iter(), a_size.iter()).chain(zip(b_start.iter(), b_size.iter()))
+        {
+            if size < 0 {
+                return Err(PyValueError::new_err(
+                    "chunk sizes must be non-negative in a chunked index!",
+                ));
+            }
+            if size == 0 {
+                continue;
+            }
+            ranges.push((start, start.wrapping_add(size)));
+        }
+        ranges.sort_unstable();
+
+        let mut output_start: Vec<i64> = Vec::with_capacity(ranges.len());
+        let mut output_size: Vec<i64> = Vec::with_capacity(ranges.len());
+        let mut current: Option<(i64, i64)> = None;
+        let mut flush = |(start, end): (i64, i64)| {
+            output_start.push(start);
+            output_size.push(end.wrapping_sub(start));
+        };
+        for (start, end) in ranges {
+            current = match current {
+                Some((cur_start, cur_end)) if start <= cur_end => {
+                    Some((cur_start, cur_end.max(end)))
+                }
+                Some(done) => {
+                    flush(done);
+                    Some((start, end))
+                }
+                None => Some((start, end)),
+            };
+        }
+        if let Some(done) = current {
+            flush(done);
+        }
+        Ok((
+            Array1::from_vec(output_start),
+            Array1::from_vec(output_size),
+        ))
+    }
+
     #[pyfunction(name = "project_chunked_on_simple")]
     fn project_chunked_on_simple_py<'py>(
         py: Python<'py>,

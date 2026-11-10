@@ -26,6 +26,7 @@ class DatasetType(Enum):
     halo_properties = "halo_properties"
     halo_profiles = "halo_profiles"
     halo_particles = "halo_particles"
+    snapshot_particles = "snapshot_particles"
     synthetic_galaxies = "synthetic_galaxies"
     healpix_map = "healpix_map"
 

@@ -9,7 +9,7 @@ Datasets behave a lot like dictionaries. You can get the names of the dataset wi
 Types of Collections
 --------------------
 
-OpenCosmo currently implements three collection types. :py:class:`opencosmo.Ligthcone` collections stack datasets in angular coordinates from  different redshift slices into a single dataset-like object. :py:class:`opencosmo.SimulationCollection` collections hold :py:class:`opencosmo.Dataset`, :py:class:`opencosmo.Lightcone`, or :py:class:`opencosmo.StructureCollection` of the same type from several simulations. :py:class:`opencosmo.StructureCollection` collections hold multiple data types from a single collection, grouped by object. A :py:class:`opencosmo.HealpixMap` holds one or more on-sky maps. See below for information of how these collections can be used. 
+OpenCosmo currently implements three collection types. :py:class:`opencosmo.Ligthcone` collections stack datasets in angular coordinates from  different redshift slices into a single dataset-like object. :py:class:`opencosmo.SimulationCollection` collections hold :py:class:`opencosmo.Dataset`, :py:class:`opencosmo.Lightcone`, or :py:class:`opencosmo.StructureCollection` of the same type from several simulations. :py:class:`opencosmo.StructureCollection` collections hold multiple data types from a single collection, grouped by object. A :py:class:`opencosmo.HealpixMap` holds one or more on-sky maps. A :py:class:`opencosmo.ParticleCollection` holds the particle types of a full particle snapshot. See below for information of how these collections can be used. 
 
 Collections can be opened just like datasets using :py:func:`opencosmo.open`, and written with :py:func:`opencosmo.write`.
 
@@ -43,6 +43,28 @@ Lightcones hold datasets from several different redshift steps, which are stacke
            10 119.903854             46.74386        0.96118975         128.91646 ...       -149.2758 1.5263848             (1049601, 62555736594)  0.04037726
            11 119.049706            49.151897        0.96145815         126.78099 ...      0.12496548 1.5141958             (1049601, 60492121202) 0.040086865
            11  119.60659             43.32933         0.9612831        127.099144 ...       -149.2758  1.519284             (1049601, 60492184203)  0.04027629
+
+.. _particle-collections:
+
+Particle Collections
+--------------------
+
+A full particle snapshot of a HACC simulation (a ``snapshotparticles`` file) opens as a :py:class:`opencosmo.ParticleCollection`. It holds one :py:class:`opencosmo.Dataset` for each particle type, keyed by the type: ``dm_particles``, ``gas_particles``, ``star_particles`` and ``agn_particles``. The particle types are not linked to each other or to any halo.
+
+.. code-block:: python
+
+   import opencosmo as oc
+   particles = oc.open("m000p-624.snapshotparticles.hdf5")
+   region = oc.make_box((100, 100, 100), (120, 120, 120))
+   gas = particles.with_units("scalefree").bound(region)["gas_particles"]
+
+Due to the large size of particle datasets, spatial queries on a particle collection are snapped to the spatial index. This snapping means :py:meth:`bound <opencosmo.ParticleCollection.bound>` and :py:meth:`box_search <opencosmo.ParticleCollection.box_search>` will sometimes return particles that are slightly outside the requested region.
+
+Repeated bounds work on the current selection. After an overlapping query, the requested region becomes the logical region used to check later queries, even though the retained cells can extend beyond it. A later query outside that region may warn or return an empty selection, even if retained boundary cells contain particles there.
+
+:py:meth:`bound <opencosmo.ParticleCollection.bound>`, :py:meth:`box_search <opencosmo.ParticleCollection.box_search>` and :py:meth:`with_units <opencosmo.ParticleCollection.with_units>` apply to every particle type, and each type is queried through its own spatial index. :py:meth:`select <opencosmo.ParticleCollection.select>` and :py:meth:`drop <opencosmo.ParticleCollection.drop>` match column names to the particle types that have them, so ``particles.select("x", "y", "z", "sfr")`` keeps the positions of every type and the star formation rate of the gas. :py:meth:`with_datasets <opencosmo.ParticleCollection.with_datasets>` keeps only some of the types, :py:meth:`evaluate_on_dataset <opencosmo.ParticleCollection.evaluate_on_dataset>` evaluates a function on one type, and :py:meth:`get_data <opencosmo.ParticleCollection.get_data>` returns the data of every type in a dictionary keyed by type. For other operations, transform the datasets one at a time.
+
+Open a split snapshot through its master file, not through one of its subfiles. When the file is opened with MPI, every particle type is split between the ranks in the same way, so each rank holds all the particles in its part of the box. A particle collection can be written with :py:func:`opencosmo.write` and opens again as a particle collection.
 
 Structure Collections
 ---------------------

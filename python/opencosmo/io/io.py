@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     import opencosmo as oc
     from opencosmo.collection.healpix_map.state import HealpixMapState
     from opencosmo.collection.lightcone.state import LightconeState
+    from opencosmo.collection.particles.state import ParticleState
     from opencosmo.collection.simulation.state import SimulationState
     from opencosmo.collection.structure.state import StructureState
     from opencosmo.dataset.state import DatasetState
@@ -76,6 +77,7 @@ def open(
     | oc.StructureCollection
     | oc.SimulationCollection
     | oc.HealpixMap
+    | oc.ParticleCollection
 ):
     """
     Open a dataset or data collection from one or more opencosmo files.
@@ -155,7 +157,14 @@ def open(
 # PEP 695 alias inside a union across facade.wrap's overloads.
 def open_state(
     *files: str | Path, mpi_mode: str = "spatial", **open_kwargs: bool
-) -> DatasetState | LightconeState | StructureState | HealpixMapState | SimulationState:
+) -> (
+    DatasetState
+    | LightconeState
+    | StructureState
+    | HealpixMapState
+    | SimulationState
+    | ParticleState
+):
     """Open files as a backend state. See :py:func:`open` for the arguments."""
     try:
         mode = MpiMode(mpi_mode)

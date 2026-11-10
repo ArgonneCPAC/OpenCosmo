@@ -12,7 +12,12 @@ from opencosmo.collection.healpix_map.state import HealpixMapState
 from opencosmo.dataset import state as st
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.io import plan
-from opencosmo.io.discover import discover_all, has_maps, is_particle_group
+from opencosmo.io.discover import (
+    discover_all,
+    has_maps,
+    is_particle_group,
+    is_snapshot_particle_group,
+)
 from opencosmo.io.specs import group_by_scope, match_spec
 from opencosmo.mpi import get_comm_world
 from opencosmo.plugins.contexts import DatasetOpenCtx, HookPoint
@@ -227,6 +232,8 @@ def open_files(
     # StructureCollection). Opening particles on their own is unsupported: if every
     # discovered group is a particle group, there is nothing to anchor them, so fail
     # loudly rather than fabricate a SimulationCollection of orphaned particle types.
+    # Snapshot particle files are the exception: their particle types are complete
+    # on their own and open as a ParticleCollection.
     groups = [g for fl in ordinary_layouts for g in fl.groups]
 
     groups_by_uuid = {group.uuid: group for group in groups if group.uuid is not None}
@@ -250,7 +257,11 @@ def open_files(
                     f"{reference.row_count}; {details}."
                 )
 
-    if groups and all(is_particle_group(g) for g in groups):
+    if (
+        groups
+        and all(is_particle_group(g) for g in groups)
+        and not all(is_snapshot_particle_group(g) for g in groups)
+    ):
         raise ValueError(
             "Cannot open particle data on its own. Particle datasets must be opened "
             "together with their properties dataset (e.g. halo or galaxy properties), "
@@ -379,11 +390,12 @@ def open_files(
     if len(children) == 1 and match_set is None:
         return next(iter(children.values()))
 
+    from opencosmo.collection.particles.state import ParticleState
     from opencosmo.collection.simulation import state as simst
 
     members: dict[str, SimulationChild] = {}
     for name, child in children.items():
-        if isinstance(child, HealpixMapState):
+        if isinstance(child, HealpixMapState | ParticleState):
             raise TypeError(
                 "Simulation collection only accepts datasets, lightcones, "
                 "and structure collections"

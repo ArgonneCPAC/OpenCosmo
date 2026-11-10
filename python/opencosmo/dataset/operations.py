@@ -26,6 +26,7 @@ from opencosmo.dataset.take import (
     get_range_take_index,
 )
 from opencosmo.index import (
+    combine,
     empty,
     get_range,
     into_array,
@@ -390,8 +391,22 @@ def rows(
         yield output_data
 
 
-@instrument_call(iss.serialize_bound)
-def bound(state: DatasetState, region, select_by):
+@instrument_call(iss.serialize_bound, drop="snap")
+def bound(state: DatasetState, region, select_by, snap: bool = False):
+    """
+    Restrict a dataset to a region, in the current unit convention.
+
+    By default, particles or objects in cells on the region boundary are checked
+    individually, so the result is exact. This is what the public
+    :py:meth:`opencosmo.Dataset.bound` does, and it has no ``snap`` argument.
+
+    With ``snap=True``, which only :py:meth:`opencosmo.ParticleCollection.bound`
+    uses internally, the whole contained and intersecting cells are selected and
+    boundary coordinates are never read. Particles outside the region can be
+    returned, and compact chunked selections are kept where possible. The state
+    records the requested region, so a later bound is compared with it and
+    not with the cells that were selected.
+    """
     if state.spatial_index is None:
         raise AttributeError(
             "Your dataset does not contain a spatial index, "
@@ -430,9 +445,14 @@ def bound(state: DatasetState, region, select_by):
     contained_index: DataIndex
     intersects_index: DataIndex
     contained_index, intersects_index = state.spatial_index.query(check_region)
+    if snap:
+        new_index = combine(contained_index, intersects_index)
+        new_index = project(state.raw_index, new_index)
+        new_state = __take_rows(state, new_index)
+        return dataclasses.replace(new_state, region=check_region)
+
     contained_index = project(state.raw_index, contained_index)
     intersects_index = project(state.raw_index, intersects_index)
-
     check_state = __take_rows(state, intersects_index)
     if not state.header.file.is_lightcone:
         check_state = with_units(check_state, "scalefree", {})
