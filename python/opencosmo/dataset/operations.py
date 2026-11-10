@@ -391,7 +391,7 @@ def rows(
         yield output_data
 
 
-@instrument_call(iss.serialize_bound)
+@instrument_call(iss.serialize_bound, drop="snap")
 def bound(state: DatasetState, region, select_by, snap: bool = False):
     if state.spatial_index is None:
         raise AttributeError(

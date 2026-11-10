@@ -112,14 +112,77 @@ def test_bound(snapshot_particles_path, snapshot_particle_writer, counts, conven
         inside = np.all(
             (positions > low[:, None]) & (positions < high[:, None]), axis=0
         )
-        expected = np.sort(_read(snapshot_particles_path, name, "id")[inside])
+        cell_size = snapshot_particle_writer.box_size / (
+            2**snapshot_particle_writer.max_level
+        )
+        cell_low = np.floor(positions / cell_size) * cell_size
+        intersects = np.all(
+            (cell_low < high[:, None]) & (cell_low + cell_size > low[:, None]),
+            axis=0,
+        )
+        ids = _read(snapshot_particles_path, name, "id")
+        expected = np.sort(ids[intersects])
         found = np.sort(bounded[name].select("id").get_data("numpy"))
-        assert 0 < len(found) < counts[name]
+        assert 0 < inside.sum() < len(found) < counts[name]
+        assert np.all(np.isin(ids[inside], found))
         assert np.array_equal(found, expected)
+        assert isinstance(bounded[name].index, tuple)
+
+        exact = collection[name].bound(
+            oc.make_box(tuple(low * scale), tuple(high * scale))
+        )
+        assert np.array_equal(
+            np.sort(exact.select("id").get_data("numpy")), np.sort(ids[inside])
+        )
 
     # bound returns a new collection and leaves the original unchanged
     for name, dataset in collection.items():
         assert len(dataset) == counts[name]
+
+
+def test_bound_does_not_check_individual_particles(
+    snapshot_particles_path, monkeypatch
+):
+    from opencosmo.spatial import check
+
+    def unexpected_check(*args, **kwargs):
+        pytest.fail("snapped bounds must not check individual particle coordinates")
+
+    monkeypatch.setattr(check, "check_containment", unexpected_check)
+    collection = oc.open(snapshot_particles_path).with_units("scalefree")
+    bounded = collection.bound(oc.make_box((10, 20, 5), (30, 45, 60)))
+    assert all(isinstance(dataset.index, tuple) for dataset in bounded.values())
+
+
+def test_bound_again_within_region(snapshot_particles_path, snapshot_particle_writer):
+    collection = oc.open(snapshot_particles_path).with_units("scalefree")
+    outer = collection.bound(oc.make_box((10, 20, 5), (30, 45, 60)))
+    inner = outer.bound(oc.make_box((12, 22, 8), (18, 28, 18)))
+    cell_size = snapshot_particle_writer.box_size / (
+        2**snapshot_particle_writer.max_level
+    )
+    low = np.array([12, 22, 8])
+    high = np.array([18, 28, 18])
+
+    for name in collection:
+        positions = np.stack(
+            [_read(snapshot_particles_path, name, axis) for axis in "xyz"]
+        )
+        cell_low = np.floor(positions / cell_size) * cell_size
+        intersects = np.all(
+            (cell_low < high[:, None]) & (cell_low + cell_size > low[:, None]), axis=0
+        )
+        expected = np.sort(_read(snapshot_particles_path, name, "id")[intersects])
+        found = np.sort(inner[name].select("id").get_data("numpy"))
+        assert np.array_equal(found, expected)
+        assert isinstance(inner[name].index, tuple)
+        assert np.all(np.isin(found, outer[name].select("id").get_data("numpy")))
+
+
+def test_bound_disjoint_region(snapshot_particles_path):
+    collection = oc.open(snapshot_particles_path).with_units("scalefree")
+    bounded = collection.bound(oc.make_box((70, 70, 70), (80, 80, 80)))
+    assert all(len(dataset) == 0 for dataset in bounded.values())
 
 
 def test_empty_particle_type(tmp_path, snapshot_particle_writer, counts):

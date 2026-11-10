@@ -18,13 +18,21 @@ def snapshot_particles_path(per_test_dir, snapshot_particle_writer):
     return path
 
 
-def _ids(path, name, low=None, high=None) -> np.ndarray:
+def _ids(path, name, low=None, high=None, cell_size=None) -> np.ndarray:
     with h5py.File(path, "r") as f:
         ids = f[f"{name}/data/id"][:]
         if low is None:
             return np.sort(ids)
         positions = np.stack([f[f"{name}/data/{axis}"][:] for axis in "xyz"])
-    inside = np.all((positions > low[:, None]) & (positions < high[:, None]), axis=0)
+    if cell_size is None:
+        inside = np.all(
+            (positions > low[:, None]) & (positions < high[:, None]), axis=0
+        )
+    else:
+        cell_low = np.floor(positions / cell_size) * cell_size
+        inside = np.all(
+            (cell_low < high[:, None]) & (cell_low + cell_size > low[:, None]), axis=0
+        )
     return np.sort(ids[inside])
 
 
@@ -51,10 +59,22 @@ def test_bound(snapshot_particles_path, snapshot_particle_writer):
     for name in dict(snapshot_particle_writer.counts):
         local = bounded[name].select("id").get_data("numpy")
         gathered = np.sort(np.concatenate(comm.allgather(local)))
-        expected = _ids(snapshot_particles_path, name, low, high)
+        cell_size = snapshot_particle_writer.box_size / (
+            2**snapshot_particle_writer.max_level
+        )
+        expected = _ids(snapshot_particles_path, name, low, high, cell_size)
+        exact = _ids(snapshot_particles_path, name, low, high)
         parallel_assert(
             np.array_equal(gathered, expected),
-            f"{name}: bounded particles differ from the brute-force selection",
+            f"{name}: bounded particles differ from intersecting octree cells",
+        )
+        parallel_assert(
+            len(exact) < len(gathered) and np.all(np.isin(exact, gathered)),
+            f"{name}: snapped particles do not contain the exact selection",
+        )
+        parallel_assert(
+            isinstance(bounded[name].index, tuple),
+            f"{name}: snapped index is not chunked",
         )
 
 

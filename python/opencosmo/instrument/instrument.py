@@ -13,7 +13,7 @@ from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Iterable, Sequence
 
     import h5py
     from _typeshed import DataclassInstance
@@ -32,8 +32,17 @@ def __is_recording(state: object) -> bool:
     return is_dataclass(state) and getattr(state, "log", None) is not None
 
 
-def instrument_call(serializer: Callable[..., BaseModel]):
+def instrument_call(
+    serializer: Callable[..., BaseModel], drop: str | Iterable[str] | None = None
+):
+    drop_columns = {"state"}
+    if isinstance(drop, str):
+        drop_columns.add(drop)
+    elif drop is not None:
+        drop_columns = drop_columns.intersection(drop)
+
     def make_wrapped_function(func: Callable) -> Callable:
+
         func_signature = signature(func)
         first_param = next(iter(func_signature.parameters))
         assert first_param == "state"
@@ -56,8 +65,12 @@ def instrument_call(serializer: Callable[..., BaseModel]):
             # their declared parameter names
             bound = func_signature.bind(state, *args, **kwargs)
             bound.apply_defaults()
-            arguments = bound.arguments
-            del arguments["state"]
+            arguments = {
+                arg: val
+                for arg, val in bound.arguments.items()
+                if arg not in drop_columns
+            }
+
             return record_call(state, new_state, serializer(**arguments))
 
         return wrapper

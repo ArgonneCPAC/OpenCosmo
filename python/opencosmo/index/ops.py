@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from opencosmo._lib import index as idxlib
-from opencosmo.index import coalesce_chunks, into_array
+from opencosmo.index import into_array
 
 if TYPE_CHECKING:
     from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
@@ -52,7 +52,8 @@ def combine(a: DataIndex, b: DataIndex) -> DataIndex:
     a_is_chunked = isinstance(a, tuple)
     b_is_chunked = isinstance(b, tuple)
     if a_is_chunked and b_is_chunked:
-        return __combine_chunked_chunked(a, b)
+        arrays = [arr.astype(np.int64, casting="safe", copy=False) for arr in (*a, *b)]
+        return idxlib.union_chunked(*arrays)
     if a_is_chunked or b_is_chunked:
         # At least one chunked, one simple -> materialize to simple, deduplicate
         arr = np.union1d(into_array(a), into_array(b))
@@ -60,17 +61,6 @@ def combine(a: DataIndex, b: DataIndex) -> DataIndex:
     # Simple + Simple
     arr = np.union1d(a, b)
     return arr.astype(np.int64, copy=False)
-
-
-def __combine_chunked_chunked(a: ChunkedIndex, b: ChunkedIndex) -> ChunkedIndex:
-    starts = np.concatenate((a[0], b[0]))
-    sizes = np.concatenate((a[1], b[1]))
-    if len(starts) == 0:
-        return (starts.astype(np.int64, copy=False), sizes.astype(np.int64, copy=False))
-    order = np.argsort(starts, kind="stable")
-    starts = starts[order]
-    sizes = sizes[order]
-    return coalesce_chunks(starts, sizes)
 
 
 def sort(index: DataIndex):
