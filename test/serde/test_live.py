@@ -186,7 +186,11 @@ REGIONS = [
 def test_region_round_trip(region):
     restored = region_from_live(region_to_live(region))
 
-    assert restored.model_dump() == pytest.approx(region.model_dump())
+    expected = region.model_dump()
+    actual = restored.model_dump()
+    assert actual.keys() == expected.keys()
+    for key in expected:
+        assert actual[key] == pytest.approx(expected[key])
 
 
 def test_cone_radius_from_live_is_degrees():
