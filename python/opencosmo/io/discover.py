@@ -14,6 +14,12 @@ from pydantic import ValidationError
 from opencosmo.dtypes import read_map_header
 from opencosmo.header import read_header_undecorated
 from opencosmo.io.cache import cache_layouts, get_cached_layouts
+from opencosmo.units.spec import (
+    PHYSICAL_FLAG_ATTR,
+    UnitSpec,
+    unit_spec_from_dict,
+    unit_spec_to_dict,
+)
 from opencosmo.uuid import coerce_to_uuid, get_dataset_uuid
 
 logger = logging.getLogger(__name__)
@@ -47,9 +53,8 @@ class GroupLayout:
     column_dtypes: tuple[str, ...]
     """str(dtype) for each column, same order as column_names."""
 
-    column_units: tuple[str | None, ...]
-    """``unit`` attribute of each column, index-aligned with column_names. None when
-    the attribute is absent."""
+    column_units: tuple[UnitSpec, ...]
+    """Unit metadata of each column, index-aligned with column_names."""
 
     column_descriptions: tuple[str | None, ...]
     """``description`` attribute of each column, index-aligned with column_names. None
@@ -571,9 +576,7 @@ def discover_file(path: Path) -> FileLayout:
                 column_names = tuple(columns_in_data)
                 column_handles = [column_datasets[col] for col in columns_in_data]
                 column_dtypes = tuple(str(h.dtype) for h in column_handles)
-                column_units = tuple(
-                    _normalize_attr(h.attrs.get("unit")) for h in column_handles
-                )
+                column_units = tuple(__read_unit_spec(h) for h in column_handles)
                 column_descriptions = tuple(
                     _normalize_attr(h.attrs.get("description")) for h in column_handles
                 )
@@ -709,6 +712,12 @@ def discover_all(
     return tuple(sorted(my_layouts, key=lambda fl: str(fl.path)))
 
 
+def __read_unit_spec(column: h5py.Dataset) -> UnitSpec:
+    unit = _normalize_attr(column.attrs.get("unit"))
+    is_physical = bool(column.attrs.get(PHYSICAL_FLAG_ATTR, False))
+    return UnitSpec(unit=unit, is_comoving=not is_physical)
+
+
 def group_data_type(group: GroupLayout) -> str:
     """Return the data_type from the group's header."""
     return str(group.header.file.data_type)
@@ -814,7 +823,7 @@ def group_to_dict(group: GroupLayout) -> dict[str, Any]:
         "header": group.header.to_dict(),
         "column_names": list(group.column_names),
         "column_dtypes": list(group.column_dtypes),
-        "column_units": list(group.column_units),
+        "column_units": [unit_spec_to_dict(spec) for spec in group.column_units],
         "column_descriptions": list(group.column_descriptions),
         "row_count": group.row_count,
         "has_index": group.has_index,
@@ -836,7 +845,7 @@ def group_from_dict(data: dict[str, Any]) -> GroupLayout:
         header=OpenCosmoHeader.from_dict(data["header"]),
         column_names=tuple(data["column_names"]),
         column_dtypes=tuple(data["column_dtypes"]),
-        column_units=tuple(data["column_units"]),
+        column_units=tuple(unit_spec_from_dict(spec) for spec in data["column_units"]),
         column_descriptions=tuple(data["column_descriptions"]),
         row_count=int(data["row_count"]),
         has_index=bool(data["has_index"]),

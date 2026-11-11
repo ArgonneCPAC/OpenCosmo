@@ -14,7 +14,7 @@ from opencosmo.handler.memory import InMemoryHandler
 from opencosmo.index import from_size
 from opencosmo.units import UnitConvention
 from opencosmo.units.handler import (
-    make_unit_handler_from_unit_strings,
+    make_unit_handler_from_unit_specs,
     make_unit_handler_from_units,
 )
 from opencosmo.uuid import (
@@ -135,7 +135,7 @@ def state_from_target(
         target.load_conditions,
         descriptions=target.column_descriptions,
     )
-    unit_handler = make_unit_handler_from_unit_strings(
+    unit_handler = make_unit_handler_from_unit_specs(
         target.column_units, target.header, unit_convention
     )
     descriptions = target.column_descriptions

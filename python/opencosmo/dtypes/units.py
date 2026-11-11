@@ -50,12 +50,15 @@ def __get_unit_transformations(
         return {}
     base_convention, known_units, is_comoving = us
     applicators = get_unit_applicators_dict(
-        known_units, base_convention, cosmology, is_comoving
+        known_units,
+        base_convention,
+        cosmology,
+        dict.fromkeys(known_units, is_comoving),
     )
     return applicators
 
 
-def apply_units(
+def apply_units_to_model(
     model: BaseModel | dict,
     model_type: type,
     cosmology: FlrwCosmology,

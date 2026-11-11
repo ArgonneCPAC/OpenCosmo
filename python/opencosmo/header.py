@@ -19,7 +19,7 @@ from opencosmo.dtypes import (
     read_header_attributes,
     write_header_attributes,
 )
-from opencosmo.dtypes.units import apply_units
+from opencosmo.dtypes.units import apply_units_to_model
 from opencosmo.file import broadcast_read, file_reader, file_writer
 from opencosmo.instrument import make_log_schema, read_log
 from opencosmo.io.schema import FileEntry, add_metadata, empty_schema
@@ -474,7 +474,7 @@ def get_access_table(all_models, unit_convention, redshift):
         else:
             data = model
 
-        table[model.ACCESS_PATH] |= apply_units(
+        table[model.ACCESS_PATH] |= apply_units_to_model(
             data,
             type(model),
             cosmology,

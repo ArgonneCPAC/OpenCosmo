@@ -30,6 +30,7 @@ from opencosmo.io.discover import (
 )
 from opencosmo.io.io import open_state
 from opencosmo.units.get import parse_unit_string
+from opencosmo.units.spec import UnitSpec
 from opencosmo.uuid import get_column_uuid
 
 if TYPE_CHECKING:
@@ -82,7 +83,10 @@ def _read_file_expected_layout(path: Path) -> dict:
                     str(data_grp[col].dtype) for col in columns_in_data
                 )
                 column_units = tuple(
-                    _normalize_attr_for_test(data_grp[col].attrs.get("unit"))
+                    UnitSpec(
+                        _normalize_attr_for_test(data_grp[col].attrs.get("unit")),
+                        not bool(data_grp[col].attrs.get("unit_is_physical", False)),
+                    )
                     for col in columns_in_data
                 )
                 column_descriptions = tuple(
@@ -600,7 +604,9 @@ class TestFileLayoutBlobRoundTrip:
         assert n >= 3, "test file needs at least 3 columns to exercise the mix"
 
         column_units = tuple(
-            None if i % 3 == 0 else ("" if i % 3 == 1 else "comoving Mpc/h")
+            UnitSpec(None)
+            if i % 3 == 0
+            else (UnitSpec("") if i % 3 == 1 else UnitSpec("km/s", is_comoving=False))
             for i in range(n)
         )
         column_descriptions = tuple(
@@ -622,9 +628,9 @@ class TestFileLayoutBlobRoundTrip:
         assert decoded is not None, "sha256 check should have passed"
 
         decoded_group = decoded.groups[0]
-        assert decoded_group.column_units[0] is None
-        assert decoded_group.column_units[1] == ""
-        assert decoded_group.column_units[2] == "comoving Mpc/h"
+        assert decoded_group.column_units[0] == UnitSpec(None)
+        assert decoded_group.column_units[1] == UnitSpec("")
+        assert decoded_group.column_units[2] == UnitSpec("km/s", is_comoving=False)
 
         assert decoded_group.column_descriptions[0] is None
         assert decoded_group.column_descriptions[1] == ""

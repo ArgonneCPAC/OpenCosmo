@@ -22,7 +22,7 @@ from opencosmo.uuid import get_string_uuid
 
 logger = logging.getLogger(__name__)
 
-LAYOUT_VERSION = 1
+LAYOUT_VERSION = 2
 CACHE_DISABLED = os.environ.get("OPENCOSMO_DISABLE_CACHE", "") not in ("", "0")
 SHARED_CACHE_DIRNAME = ".opencosmo"
 

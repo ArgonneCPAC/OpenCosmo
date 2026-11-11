@@ -51,7 +51,7 @@ def get_comoving_transitions(
 
     transitions: Transitions = {UnitConvention.SCALEFREE: error}
     inv_transitions: Transitions = {UnitConvention.SCALEFREE: error}
-    distance_power = get_unit_distance_power
+    distance_power = get_unit_distance_power(unit)
     if distance_power is not None and is_comoving:
         transitions[UnitConvention.PHYSICAL] = comoving_to_physical
         inv_transitions[UnitConvention.PHYSICAL] = partial(

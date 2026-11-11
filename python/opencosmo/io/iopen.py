@@ -49,6 +49,7 @@ if TYPE_CHECKING:
     from opencosmo.io.specs import SpecState
     from opencosmo.mapping.mapping import DatasetMatchSet
     from opencosmo.spatial.protocols import Region, SpatialIndex
+    from opencosmo.units.spec import UnitSpec
 
 """
 This file contains all the internal logic for opening a file or files.
@@ -128,7 +129,7 @@ class DatasetTarget:
         return self.layout.path.rsplit("/", 1)[0] or "/"
 
     @cached_property
-    def column_units(self) -> dict[str, str | None]:
+    def column_units(self) -> dict[str, UnitSpec]:
         return dict(zip(self.layout.column_names, self.layout.column_units))
 
     @cached_property

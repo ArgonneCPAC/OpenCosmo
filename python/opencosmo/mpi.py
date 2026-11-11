@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 
 def has_mpi() -> bool:
-    return get_mpi() is not None
+    return get_comm_world() is not None
 
 
 @cache

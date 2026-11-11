@@ -173,7 +173,7 @@ def get_unit_applicators_dict(
     units: Mapping[str, UnitValue],
     base_convention: UnitConvention | str,
     cosmology: FlrwCosmology,
-    is_comoving: bool = True,
+    is_comoving: Mapping[str, bool] | None = None,
 ):
     # FileParameters sets use_enum_values=True, so header.file.unit_convention is
     # a plain str at runtime despite its annotation. UnitConvention is a bare Enum
@@ -183,7 +183,10 @@ def get_unit_applicators_dict(
     applicators = {}
     for name, base_unit in units.items():
         applicators[name] = UnitApplicator.from_unit(
-            base_unit, base_convention, cosmology, is_comoving
+            base_unit,
+            base_convention,
+            cosmology,
+            True if is_comoving is None else is_comoving.get(name, True),
         )
     return applicators
 

@@ -15,6 +15,7 @@ from opencosmo.io.specs import (
     group_by_scope,
     match_spec,
 )
+from opencosmo.units.spec import UnitSpec
 from opencosmo.uuid import NAMESPACE
 
 
@@ -58,7 +59,7 @@ def _group(
     linked: tuple[str, ...] = (),
     columns: tuple[str, ...] = ("x", "y"),
     dtypes: tuple[str, ...] = ("float64", "float64"),
-    units: tuple[str | None, ...] = ("Mpc/h", None),
+    units: tuple[UnitSpec, ...] = (UnitSpec("Mpc/h"), UnitSpec(None)),
     descriptions: tuple[str | None, ...] = ("x position", ""),
     has_index: bool = True,
     simulation_name: str | None = "sim_a",

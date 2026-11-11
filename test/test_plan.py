@@ -7,6 +7,7 @@ from uuid import uuid5
 from opencosmo.io.discover import FileLayout, GroupLayout
 from opencosmo.io.io import MpiMode
 from opencosmo.io.plan import distribute
+from opencosmo.units.spec import UnitSpec
 from opencosmo.uuid import NAMESPACE
 
 
@@ -72,7 +73,7 @@ def _layout(
         header=_FakeHeader(_FakeFile(step, data_type, is_lightcone)),  # type: ignore[arg-type]
         column_names=("x", "y"),
         column_dtypes=("float64", "float64"),
-        column_units=("Mpc/h", None),
+        column_units=(UnitSpec("Mpc/h"), UnitSpec(None)),
         column_descriptions=("x position", ""),
         row_count=row_count,
         has_index=has_index,

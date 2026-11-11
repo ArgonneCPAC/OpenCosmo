@@ -10,6 +10,7 @@ from opencosmo.io.discover import (
     decode_file_layout_blob,
     encode_file_layout_blob,
 )
+from opencosmo.units.spec import UnitSpec
 
 
 def test_encode_decode_file_layout_roundtrip(test_data) -> None:
@@ -24,7 +25,7 @@ def test_encode_decode_file_layout_roundtrip(test_data) -> None:
         header=header,
         column_names=("a", "b"),
         column_dtypes=("int64", "float64"),
-        column_units=(None, None),
+        column_units=(UnitSpec(None), UnitSpec(None)),
         column_descriptions=(None, None),
         row_count=2,
         has_index=False,

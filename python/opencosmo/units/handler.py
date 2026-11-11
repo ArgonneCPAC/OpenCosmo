@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
     from opencosmo.dtypes.cosmology import FlrwCosmology
     from opencosmo.header import OpenCosmoHeader
+    from opencosmo.units.spec import UnitSpec
     from opencosmo.units.types import AnyUnit, UnitValue
 
 
@@ -27,9 +28,10 @@ def make_unit_handler_from_units(
     columns: Mapping[str, UnitValue],
     header: OpenCosmoHeader,
     target_convention: UnitConvention | None = None,
+    is_comoving: Mapping[str, bool] | None = None,
 ):
     applicators = get_unit_applicators_dict(
-        columns, header.file.unit_convention, header.cosmology
+        columns, header.file.unit_convention, header.cosmology, is_comoving
     )
     if target_convention is None:
         target_convention = header.file.unit_convention
@@ -44,19 +46,20 @@ def make_unit_handler_from_units(
     )
 
 
-def make_unit_handler_from_unit_strings(
-    unit_strings: dict[str, str | None],
+def make_unit_handler_from_unit_specs(
+    unit_specs: dict[str, UnitSpec],
     header: OpenCosmoHeader,
     target_convention: UnitConvention | None = None,
 ):
     """
     Cached-metadata counterpart to `make_unit_handler_from_units`. Builds a
-    `UnitHandler` from unit strings captured during discovery (e.g.
-    `DatasetTarget.column_units`) rather than reading `unit` attributes
+    `UnitHandler` from unit specs captured during discovery (e.g.
+    `DatasetTarget.column_units`) rather than reading unit attributes
     from live h5py datasets.
     """
-    columns = {name: parse_unit_string(us) for name, us in unit_strings.items()}
-    return make_unit_handler_from_units(columns, header, target_convention)
+    units = {name: parse_unit_string(spec.unit) for name, spec in unit_specs.items()}
+    is_comoving = {name: spec.is_comoving for name, spec in unit_specs.items()}
+    return make_unit_handler_from_units(units, header, target_convention, is_comoving)
 
 
 class UnitHandler:
@@ -245,27 +248,3 @@ class UnitHandler:
                 elif column_conversion is not None:
                     output.setdefault(uuid, {})[colname] = column.to(column_conversion)
         return output
-
-    def apply_units(self, data: dict[str, np.ndarray], unit_kwargs):
-        if self.__current_convention == UnitConvention.UNITLESS:
-            return data
-        columns = {}
-
-        for colname, value in data.items():
-            applicator = self.__applicators.get(colname)
-            column_conversion = self.__column_conversions.get(colname)
-            if applicator is not None and applicator.base_unit is not None:
-                unitful_value = applicator.apply(
-                    value, self.__current_convention, unit_kwargs=unit_kwargs
-                )
-                assert isinstance(unitful_value, u.Quantity)
-                unit_conversion = self.__conversions.get(str(unitful_value.unit))
-                if unit_conversion is not None and column_conversion is None:
-                    unitful_value = unitful_value.to(unit_conversion)
-                elif column_conversion is not None:
-                    unitful_value = unitful_value.to(column_conversion)
-                columns[colname] = unitful_value
-            else:
-                columns[colname] = value
-
-        return columns
