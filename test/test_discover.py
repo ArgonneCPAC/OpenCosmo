@@ -85,7 +85,7 @@ def _read_file_expected_layout(path: Path) -> dict:
                 column_units = tuple(
                     UnitSpec(
                         _normalize_attr_for_test(data_grp[col].attrs.get("unit")),
-                        not bool(data_grp[col].attrs.get("unit_is_physical", False)),
+                        bool(data_grp[col].attrs.get("unit_is_comoving", True)),
                     )
                     for col in columns_in_data
                 )

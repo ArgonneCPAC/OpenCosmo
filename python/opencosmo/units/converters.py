@@ -53,10 +53,11 @@ def get_comoving_transitions(
     inv_transitions: Transitions = {UnitConvention.SCALEFREE: error}
     distance_power = get_unit_distance_power(unit)
     if distance_power is not None and is_comoving:
-        transitions[UnitConvention.PHYSICAL] = comoving_to_physical
+        transitions[UnitConvention.PHYSICAL] = partial(
+            comoving_to_physical, power=distance_power
+        )
         inv_transitions[UnitConvention.PHYSICAL] = partial(
-            physical_to_comoving,
-            base_unit=unit,
+            physical_to_comoving, power=distance_power
         )
     units = {UnitConvention.COMOVING: unit, UnitConvention.PHYSICAL: unit}
     return transitions, inv_transitions, units
@@ -78,10 +79,13 @@ def get_scalefree_transitions(
     distance_power = get_unit_distance_power(unit)
     if distance_power is not None and is_comoving:
         transitions[UnitConvention.PHYSICAL] = partial(
-            scalefree_to_physical, cosmology=cosmology
+            scalefree_to_physical, power=distance_power, cosmology=cosmology
         )
         inv_transitions[UnitConvention.PHYSICAL] = partial(
-            physical_to_scalefree, base_unit=unit, cosmology=cosmology
+            physical_to_scalefree,
+            power=distance_power,
+            base_unit=unit,
+            cosmology=cosmology,
         )
     elif transitions.get(UnitConvention.COMOVING) is not None:
         transitions[UnitConvention.PHYSICAL] = transitions[UnitConvention.COMOVING]
@@ -114,14 +118,30 @@ def get_unit_without_h(unit: AnyUnit) -> AnyUnit:
 
 @cache
 def get_unit_distance_power(unit: AnyUnit) -> float | Fraction | None:
-    decomposed = unit.decompose()
-    if not isinstance(decomposed, u.UnitBase):
+    """
+    Total power of the explicit length units in ``unit``, or None if there are none.
+
+    Only bases that are pure lengths (km, Mpc, cm, ...) count. Compound units are
+    not decomposed, so the m^2 inside an energy such as keV or erg is ignored.
+    Function units (e.g. dex) never scale.
+    """
+    if not isinstance(unit, u.UnitBase):
         return None
-    try:
-        index = decomposed.bases.index(u.m)
-    except ValueError:
-        return None
-    return decomposed.powers[index]
+    power = sum(
+        (
+            base_power * __length_power(base)
+            for base, base_power in zip(unit.bases, unit.powers)
+        ),
+        start=0,
+    )
+    return power if power != 0 else None
+
+
+def __length_power(base: u.UnitBase) -> float | Fraction:
+    decomposed = base.decompose()
+    if decomposed.bases == [u.m]:
+        return decomposed.powers[0]
+    return 0
 
 
 def add_littleh(
@@ -134,12 +154,12 @@ def add_littleh(
 
 
 def physical_to_comoving(
-    value: u.Quantity, scale_factor: float | np.ndarray, base_unit: AnyUnit, **kwargs
-):
-    power = get_unit_distance_power(base_unit)
-    if power is not None:
-        return value / (scale_factor**power)
-    return value
+    value: u.Quantity,
+    scale_factor: float | np.ndarray,
+    power: float | Fraction,
+    **kwargs,
+) -> u.Quantity:
+    return value / (scale_factor**power)
 
 
 def remove_littleh(value: u.Quantity, cosmology: FlrwCosmology, **kwargs) -> u.Quantity:
@@ -157,20 +177,16 @@ def remove_littleh(value: u.Quantity, cosmology: FlrwCosmology, **kwargs) -> u.Q
 
 
 def comoving_to_physical(
-    value: u.Quantity, scale_factor: float | np.ndarray, **kwargs
+    value: u.Quantity,
+    scale_factor: float | np.ndarray,
+    power: float | Fraction,
+    **kwargs,
 ) -> u.Quantity:
     """
-    Convert comoving coordinates to physical coordinates. This is the
-    second step after parsing the units themselves.
+    Convert a comoving quantity to physical by multiplying by the scale factor
+    raised to the power of the comoving lengths in its unit.
     """
-
-    unit = value.unit
-    # Check if the units have distances in them
-    power = get_unit_distance_power(unit)
-    # multiply by the scale factor to the same power as the distance
-    if power is not None:
-        return value * scale_factor**power
-    return value
+    return value * scale_factor**power
 
 
 def get_scale_factor(dataset: DatasetState, cosmology, redshift):
@@ -198,19 +214,23 @@ def get_scale_factor(dataset: DatasetState, cosmology, redshift):
 def scalefree_to_physical(
     value: u.Quantity,
     scale_factor: float | np.ndarray,
+    power: float | Fraction,
     cosmology: FlrwCosmology,
-):
+    **kwargs,
+) -> u.Quantity:
     new_value = remove_littleh(value, cosmology)
-    return comoving_to_physical(new_value, scale_factor)
+    return comoving_to_physical(new_value, scale_factor, power)
 
 
 def physical_to_scalefree(
     value: u.Quantity,
     scale_factor: float | np.ndarray,
+    power: float | Fraction,
     base_unit: AnyUnit,
     cosmology: FlrwCosmology,
-):
-    new_value = physical_to_comoving(value, scale_factor, base_unit)
+    **kwargs,
+) -> u.Quantity:
+    new_value = physical_to_comoving(value, scale_factor, power)
     return add_littleh(new_value, cosmology, base_unit)
 
 

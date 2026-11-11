@@ -15,7 +15,7 @@ from opencosmo.dtypes import read_map_header
 from opencosmo.header import read_header_undecorated
 from opencosmo.io.cache import cache_layouts, get_cached_layouts
 from opencosmo.units.spec import (
-    PHYSICAL_FLAG_ATTR,
+    COMOVING_FLAG_ATTR,
     UnitSpec,
     unit_spec_from_dict,
     unit_spec_to_dict,
@@ -714,8 +714,8 @@ def discover_all(
 
 def __read_unit_spec(column: h5py.Dataset) -> UnitSpec:
     unit = _normalize_attr(column.attrs.get("unit"))
-    is_physical = bool(column.attrs.get(PHYSICAL_FLAG_ATTR, False))
-    return UnitSpec(unit=unit, is_comoving=not is_physical)
+    is_comoving = bool(column.attrs.get(COMOVING_FLAG_ATTR, True))
+    return UnitSpec(unit=unit, is_comoving=is_comoving)
 
 
 def group_data_type(group: GroupLayout) -> str:

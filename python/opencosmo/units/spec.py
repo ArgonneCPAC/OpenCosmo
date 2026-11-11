@@ -3,8 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TypedDict
 
-PHYSICAL_FLAG_ATTR = "unit_is_physical"
-"""HDF5 column attribute marking a unitful column as a proper (non-comoving) quantity."""
+COMOVING_FLAG_ATTR = "unit_is_comoving"
+"""HDF5 column attribute indicating whether lengths in the unit are comoving.
+Absent means True. Set it to False for proper (non-comoving) quantities."""
 
 
 class UnitSpecDict(TypedDict):
