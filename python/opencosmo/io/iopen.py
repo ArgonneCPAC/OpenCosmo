@@ -22,7 +22,7 @@ from opencosmo.io.specs import group_by_scope, match_spec
 from opencosmo.mpi import get_comm_world
 from opencosmo.plugins.contexts import DatasetOpenCtx, HookPoint
 from opencosmo.plugins.hook import fold
-from opencosmo.power_spectrum.state import PowerSpectrumState
+from opencosmo.power_spectrum import PowerSpectrum
 from opencosmo.spatial.builders import from_model
 from opencosmo.spatial.index import (
     get_partitions_with_data,
@@ -396,7 +396,7 @@ def open_files(
 
     members: dict[str, SimulationChild] = {}
     for name, child in children.items():
-        if isinstance(child, HealpixMapState | ParticleState | PowerSpectrumState):
+        if isinstance(child, HealpixMapState | ParticleState | PowerSpectrum):
             raise TypeError(
                 "Simulation collection only accepts datasets, lightcones, "
                 "and structure collections"

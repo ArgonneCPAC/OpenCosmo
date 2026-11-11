@@ -1,3 +1,5 @@
+import copy
+import pickle
 import shutil
 
 import astropy.units as u
@@ -32,13 +34,13 @@ def test_open(hydro):
     assert hydro.k.shape == (n_k,)
     assert np.all(np.diff(hydro.k) > 0)
     for component in hydro.components:
-        assert hydro.get_data(component).shape == (n_steps, n_k)
+        assert hydro.get_data(component)[component].shape == (n_steps, n_k)
 
 
 def test_open_gravity_only(test_data):
     ps = oc.open(test_data.power_spectrum.gravity_only)
     assert ps.components == ("total",)
-    assert ps.get_data().shape == (len(ps.steps), len(ps.k))
+    assert ps.get_data("total")["total"].shape == (len(ps.steps), len(ps.k))
 
 
 def test_header(hydro):
@@ -51,16 +53,19 @@ def test_header(hydro):
 
 def test_comoving_units(hydro):
     assert hydro.k.unit == u.Mpc**-1
-    assert hydro.get_data("cdm").unit == u.Mpc**3
+    assert hydro.get_data("cdm")["cdm"].unit == u.Mpc**3
 
 
 def test_scalefree_units(hydro):
     scalefree = hydro.with_units("scalefree")
     h = hydro.cosmology.h
     assert scalefree.k.unit == cu.littleh / u.Mpc
-    assert scalefree.get_data().unit == (u.Mpc / cu.littleh) ** 3
+    assert scalefree.get_data("total")["total"].unit == (u.Mpc / cu.littleh) ** 3
     assert np.allclose(scalefree.k.value * h, hydro.k.value)
-    assert np.allclose(scalefree.get_data().value / h**3, hydro.get_data().value)
+    assert np.allclose(
+        scalefree.get_data("total")["total"].value / h**3,
+        hydro.get_data("total")["total"].value,
+    )
 
 
 def test_physical_units_are_refused(hydro):
@@ -71,7 +76,7 @@ def test_physical_units_are_refused(hydro):
 def test_unitless(hydro):
     unitless = hydro.with_units("unitless")
     assert not isinstance(unitless.k, u.Quantity)
-    assert not isinstance(unitless.get_data(), u.Quantity)
+    assert not isinstance(unitless.get_data("total")["total"], u.Quantity)
 
 
 def test_with_units_returns_new_object(hydro):
@@ -81,7 +86,7 @@ def test_with_units_returns_new_object(hydro):
 
 
 def test_get_step(hydro):
-    full = hydro.get_data("cdm")
+    full = hydro.get_data("cdm")["cdm"]
     for i, step in enumerate(hydro.steps):
         assert np.array_equal(hydro.get_data("cdm", step=step), full[i])
 
@@ -89,7 +94,29 @@ def test_get_step(hydro):
 def test_get_redshift(hydro):
     i = len(hydro.steps) // 2
     redshift = hydro.redshifts[i] + 0.005
-    assert np.array_equal(hydro.get_data(redshift=redshift), hydro.get_data()[i])
+    single = hydro.get_data("total", redshift=redshift)
+    assert single.shape == (len(hydro.k),)
+    all_steps = hydro.get_data("total")
+    assert np.array_equal(single, all_steps["total"][i])
+
+
+def test_get_multiple_redshifts(hydro):
+    redshifts = list(hydro.redshifts[::3] + 0.005)
+    data = hydro.get_data("total", redshift=redshifts)
+    assert data["total"].shape == (len(redshifts), len(hydro.k))
+    assert "redshift" in data.colnames
+    assert np.allclose(data["redshift"], hydro.redshifts[::3])
+    for row, i in enumerate(range(0, len(hydro.steps), 3)):
+        assert np.array_equal(
+            data["total"][row], hydro.get_data("total", step=hydro.steps[i])
+        )
+
+
+def test_redshift_column_in_all_steps_output(hydro):
+    data = hydro.get_data()
+    assert np.allclose(data["redshift"], hydro.redshifts)
+    single = hydro.get_data("cdm", step=hydro.steps[0])
+    assert single.shape == (len(hydro.k),)
 
 
 def test_redshift_outside_tolerance(hydro):
@@ -114,6 +141,44 @@ def test_redshift_beyond_last_step(hydro):
         hydro.get_data(redshift=-0.5)
 
 
+def test_get_all_components(hydro):
+    from astropy.table import QTable
+
+    data = hydro.get_data()
+    assert isinstance(data, QTable)
+    assert set(data.colnames) == set(hydro.components) | {"redshift"}
+    for name in hydro.components:
+        assert data[name].shape == (len(hydro.steps), len(hydro.k))
+        assert np.all(data[name].unit == u.Mpc**3)
+
+
+def test_get_component_list(hydro):
+    data = hydro.get_data(["cdm", "gas"], step=hydro.steps[0])
+    assert set(data.colnames) == {"cdm", "gas"}
+    assert data["cdm"].shape == (len(hydro.k),)
+    assert np.array_equal(
+        data["cdm"].value, hydro.get_data("cdm", step=hydro.steps[0]).value
+    )
+
+
+def test_get_data_numpy_format(hydro):
+    data = hydro.get_data(format="numpy")
+    assert isinstance(data, dict)
+    assert not isinstance(data["cdm"], u.Quantity)
+    single = hydro.get_data("cdm", step=hydro.steps[0], format="numpy")
+    assert isinstance(single, np.ndarray)
+
+
+def test_get_data_unknown_format(hydro):
+    with pytest.raises(ValueError, match="Unknown data output format"):
+        hydro.get_data(format="parquet")
+
+
+def test_get_data_empty_component_list(hydro):
+    with pytest.raises(ValueError, match="at least one component"):
+        hydro.get_data([])
+
+
 def test_unknown_component(hydro):
     with pytest.raises(ValueError, match="no component 'dm'"):
         hydro.get_data("dm")
@@ -134,15 +199,34 @@ def test_nonfinite_redshift(hydro):
         hydro.get_data(redshift=np.nan)
 
 
-def test_axes_are_copies(hydro):
+def test_axes_are_read_only(hydro):
+    for name in ("steps", "redshifts", "n_modes"):
+        axis = getattr(hydro, name)
+        with pytest.raises(ValueError, match="read-only"):
+            axis[0] = 0
+        with pytest.raises(ValueError, match="WRITEABLE"):
+            axis.flags.writeable = True
+
+
+@pytest.mark.parametrize(
+    "duplicate", [copy.copy, copy.deepcopy, lambda ps: pickle.loads(pickle.dumps(ps))]
+)
+def test_duplicates_stay_read_only(hydro, duplicate):
+    duplicated = duplicate(hydro)
+    assert not duplicated.steps.flags.writeable
+    assert np.array_equal(duplicated.get_data("cdm"), hydro.get_data("cdm"))
+
+
+def test_returned_values_are_read_only(hydro):
     unitless = hydro.with_units("unitless")
-    for name in ("steps", "redshifts", "n_modes", "k"):
-        axis = getattr(unitless, name)
-        expected = axis.copy()
-        axis.flags.writeable = True
-        axis[:] = 0
-        assert np.array_equal(getattr(unitless, name), expected)
-    assert np.array_equal(hydro.get_data(redshift=0), hydro.get_data()[-1])
+    for value in (
+        unitless.k,
+        unitless.get_data("total")["total"],
+        unitless.get_data("cdm", step=unitless.steps[0]),
+    ):
+        assert not value.flags.writeable
+        with pytest.raises(ValueError, match="read-only"):
+            value[:] = 0
 
 
 def test_missing_spectrum_is_nan(hydro_copy):
@@ -150,7 +234,7 @@ def test_missing_spectrum_is_nan(hydro_copy):
         f["power_spectrum/pk_agn"][0] = np.nan
     ps = oc.open(hydro_copy)
     assert np.all(np.isnan(ps.get_data("agn", step=ps.steps[0])))
-    assert not np.any(np.isnan(ps.get_data("agn")[1:]))
+    assert not np.any(np.isnan(ps.get_data("agn")["agn"][1:]))
 
 
 def test_missing_axis(hydro_copy):

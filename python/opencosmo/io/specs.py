@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from opencosmo.io.discover import GroupLayout
     from opencosmo.io.index_spec import IndexSpec
     from opencosmo.io.iopen import DatasetTarget
-    from opencosmo.power_spectrum.state import PowerSpectrumState
+    from opencosmo.power_spectrum import PowerSpectrum
 
     type SpecState = (
         DatasetState
@@ -34,7 +34,7 @@ if TYPE_CHECKING:
         | StructureState
         | HealpixMapState
         | ParticleState
-        | PowerSpectrumState
+        | PowerSpectrum
     )
 
 """
@@ -398,7 +398,8 @@ class HealpixMapSpec:
 
 
 class PowerSpectrumSpec:
-    """A single power_spectrum group. Its arrays are read without a row index."""
+    """A single power_spectrum group. It is read eagerly, without a row index or a
+    backend state."""
 
     name = "power_spectrum"
 
@@ -417,9 +418,9 @@ class PowerSpectrumSpec:
         is_empty_ref: bool,
         open_kwargs: dict[str, Any],
     ) -> SpecState:
-        from opencosmo.power_spectrum.state import open_state
+        from opencosmo.power_spectrum.power_spectrum import read_power_spectrum
 
-        return open_state(targets[0])
+        return read_power_spectrum(targets[0])
 
 
 class LightconeSpec:

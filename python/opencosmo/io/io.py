@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from opencosmo.collection.simulation.state import SimulationState
     from opencosmo.collection.structure.state import StructureState
     from opencosmo.dataset.state import DatasetState
-    from opencosmo.power_spectrum.state import PowerSpectrumState
+    from opencosmo.power_spectrum import PowerSpectrum
 
     from .protocols import Writeable
 
@@ -151,8 +151,14 @@ def open(
     """
     # Deferred: opencosmo.io is imported while the facades are still initializing.
     from opencosmo import facade
+    from opencosmo.power_spectrum import PowerSpectrum
 
-    return facade.wrap(open_state(*files, mpi_mode=mpi_mode, **open_kwargs))
+    opened = open_state(*files, mpi_mode=mpi_mode, **open_kwargs)
+    # A power spectrum is read eagerly into its user-facing object; it has no
+    # backend state to wrap.
+    if isinstance(opened, PowerSpectrum):
+        return opened
+    return facade.wrap(opened)
 
 
 # The return type is spelled out rather than aliased: ty does not expand a
@@ -166,9 +172,10 @@ def open_state(
     | HealpixMapState
     | SimulationState
     | ParticleState
-    | PowerSpectrumState
+    | PowerSpectrum
 ):
-    """Open files as a backend state. See :py:func:`open` for the arguments."""
+    """Open files as a backend state, or as a PowerSpectrum, which has none. See
+    :py:func:`open` for the arguments."""
     try:
         mode = MpiMode(mpi_mode)
     except ValueError:

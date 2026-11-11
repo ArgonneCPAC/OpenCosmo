@@ -20,6 +20,26 @@ a :py:class:`PowerSpectrum <opencosmo.PowerSpectrum>`.
    pk_cdm = ps.get_data("cdm", redshift=0.5) # the step closest to z = 0.5, within 0.01
    pk_all = ps.get_data("total")             # shape (n_steps, n_k)
 
+``get_data`` also accepts ``"all"`` (the default) or a list of components, in which
+case the spectra come back keyed by component name — as an astropy QTable by
+default, or in another format with ``format=``, just like
+:py:meth:`Dataset.get_data <opencosmo.Dataset.get_data>`:
+
+.. code-block:: python
+
+   pks = ps.get_data()                  # QTable with one column per component
+   pks = ps.get_data(["cdm", "gas"])    # same, for just those components
+   pks = ps.get_data(format="pandas")   # pandas DataFrame
+
+When no step is given, the output covers every step and also has a "redshift"
+column with the redshift of each step. A list of redshifts selects several steps
+the same way:
+
+.. code-block:: python
+
+   pks = ps.get_data("cdm", redshift=[0, 0.5, 1])  # rows are the closest steps
+   pks["redshift"]                                 # their redshifts
+
 A gravity-only simulation has only the "total" component. A hydrodynamic simulation
 also has the spectra of the dark matter, the baryons and several subsets of the
 baryons. Each component is normalized to its own mean density. The spectrum of a
@@ -52,8 +72,9 @@ defined in comoving coordinates, so there is no "physical" convention.
 Selecting a redshift
 --------------------
 
-``get_data(component, redshift=z)`` selects the step whose redshift is closest to
-``z``. HACC steps lie within a few thousandths of round redshifts, so
-``redshift=0.5`` selects the step at z = 0.4987 in the SCIDAC simulations. If no
-step is within 0.01 of ``z``, the call raises a ``ValueError`` that names the
-closest steps. Pass ``step=`` to select a step exactly.
+``get_data(components, redshift=z)`` selects the step whose redshift is closest to
+``z``; pass a list of redshifts to select several steps. HACC steps lie within a
+few thousandths of round redshifts, so ``redshift=0.5`` selects the step at
+z = 0.4987 in the SCIDAC simulations. If no step is within 0.01 of ``z``, the call
+raises a ``ValueError`` that names the closest steps. Pass ``step=`` to select a
+step exactly.
