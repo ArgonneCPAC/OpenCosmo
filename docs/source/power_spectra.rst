@@ -1,8 +1,10 @@
 Power Spectra
 =============
 
-Power spectra represent the size of matter density fluctuations as a functioon of size. A power spectrum
-file holds these spectra for one simulation: the spectrum of each component at
+In the context of cosmology, a power spectrum describes the magnitude of density fluctuations for a given component as a function of size. Specifically,
+it is a `fourier transform of the correlation function of a given density field <https://en.wikipedia.org/wiki/Matter_power_spectrum>`_.
+
+A power spectrum file holds these spectra for one simulation: the spectrum of each component at
 each of a list of steps, on one set of wavenumber bins. Opening such a file returns
 a :py:class:`PowerSpectrum <opencosmo.PowerSpectrum>`.
 

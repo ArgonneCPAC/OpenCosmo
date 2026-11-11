@@ -1,5 +1,5 @@
-Power Spectrum API
-==================
+Power Spectrum
+==============
 
 Opening a power spectrum file with :py:func:`opencosmo.open` returns a
 :py:class:`opencosmo.PowerSpectrum`. Like a dataset, a power spectrum is
