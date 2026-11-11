@@ -1028,7 +1028,7 @@ wheels = [
 
 [[package]]
 name = "opencosmo"
-version = "1.4.7"
+version = "1.5.0b1"
 source = { editable = "." }
 dependencies = [
     { name = "astropy" },
