@@ -50,6 +50,15 @@ def test_header(hydro):
     assert hydro.cosmology.h > 0
 
 
+def test_parameters(hydro):
+    parameters = hydro.parameters
+    assert isinstance(parameters, dict)
+    assert parameters == hydro.header.parameters["power_spectrum"]
+    assert parameters["grid"] == hydro.simulation["pm_grid"]
+    parameters["grid"] = -1
+    assert hydro.parameters["grid"] == hydro.simulation["pm_grid"]
+
+
 def test_comoving_units(hydro):
     assert hydro.k.unit == u.Mpc**-1
     assert hydro.get_data()["cdm"].unit == u.Mpc**3
@@ -179,6 +188,23 @@ def test_redshift_outside_tolerance(hydro):
     )
     with pytest.raises(ValueError, match=message):
         hydro.with_redshifts(redshift)
+
+
+def test_redshift_tolerance(hydro):
+    redshifts = hydro.redshifts
+    i = int(np.argmax(-np.diff(redshifts)))
+    redshift = (redshifts[i] + redshifts[i + 1]) / 2
+    gap = redshifts[i] - redshifts[i + 1]
+    selected = hydro.with_redshifts(redshift, tolerance=gap)
+    assert selected.steps[0] in hydro.steps[i : i + 2]
+    with pytest.raises(ValueError, match=r"within 0\.001 of redshift"):
+        hydro.with_redshifts(redshift, tolerance=0.001)
+
+
+@pytest.mark.parametrize("tolerance", [-0.1, np.nan, np.inf])
+def test_invalid_redshift_tolerance(hydro, tolerance):
+    with pytest.raises(ValueError, match="tolerance must be finite and non-negative"):
+        hydro.with_redshifts(0, tolerance=tolerance)
 
 
 def test_redshift_beyond_last_step(hydro):

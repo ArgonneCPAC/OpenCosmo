@@ -239,8 +239,8 @@ class MapParams(BaseModel):
 
 class PowerSpectrumParams(BaseModel):
     """
-    How HACC measured the power spectra in a power spectrum file. Wavenumbers
-    are comoving and in h/Mpc.
+    The parameters used during measurement of the power spectra in a power
+    spectrum file. Wavenumbers are comoving and in h/Mpc.
     """
 
     model_config = ConfigDict(frozen=True)

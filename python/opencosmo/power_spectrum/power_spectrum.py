@@ -18,8 +18,9 @@ if TYPE_CHECKING:
     from opencosmo.units.handler import UnitHandler
 
 PREFIX = "pk_"
-# The largest difference between a requested redshift and the step it selects.
-# HACC steps sit within a few thousandths of the round redshifts users ask for.
+# The default largest difference between a requested redshift and the step it
+# selects. Simulation steps are usually not at exactly the round redshifts users
+# ask for.
 REDSHIFT_TOLERANCE = 0.01
 
 
@@ -34,14 +35,14 @@ like this should be treated separately.
 @dataclass(frozen=True, eq=False, repr=False)
 class PowerSpectrum:
     """
-    The matter power spectra that HACC measured while a simulation ran. A power
+    The matter power spectra measured while a simulation ran. A power
     spectrum file holds the spectrum of each component at each of a list of steps,
     on one set of wavenumber bins.
 
     Like a :py:class:`Dataset <opencosmo.Dataset>`, a power spectrum opens in the
     "comoving" unit convention (there is no "physical" convention for spectra), and
     its header parameters such as ``cosmology`` and ``simulation`` are available as
-    attributes. HACC's measurement settings are in ``power_spectrum``.
+    attributes. The measurement settings are in :py:attr:`parameters`.
 
     .. code-block:: python
 
@@ -171,6 +172,19 @@ class PowerSpectrum:
         """
         return _apply_units(self._unit_handler, "k", self._k)
 
+    @property
+    def parameters(self) -> dict[str, object]:
+        """
+        The parameters used during measurement of the power spectra, such as the
+        grid size, the mass assignment, and the binning. These are the parameters
+        of the ``power_spectrum`` header block, in the current unit convention.
+
+        Returns
+        -------
+        parameters: dict[str, object]
+        """
+        return dict(self.header.parameters["power_spectrum"])
+
     def select(self, *components: str | Iterable[str]) -> PowerSpectrum:
         """
         Create a new power spectrum with a subset of the components, like
@@ -258,19 +272,26 @@ class PowerSpectrum:
             self, [_step_index(self.steps, step) for step in _flatten_args(steps)]
         )
 
-    def with_redshifts(self, *redshifts: float | Iterable[float]) -> PowerSpectrum:
+    def with_redshifts(
+        self,
+        *redshifts: float | Iterable[float],
+        tolerance: float = REDSHIFT_TOLERANCE,
+    ) -> PowerSpectrum:
         """
         Create a new power spectrum that covers only the steps closest to the
         given redshifts. Each value selects the step whose redshift in
         :py:attr:`redshifts` is closest to it, and it fails if that step is more
-        than 0.01 away. HACC steps lie within a few thousandths of round
-        redshifts, so ``with_redshifts(0.5)`` selects the step at z = 0.4987 in
-        the SCIDAC simulations.
+        than ``tolerance`` away. Simulation steps are often not at exactly round
+        redshifts, so ``with_redshifts(0.5)`` may select a step at z = 0.4987,
+        for example.
 
         Parameters
         ----------
         *redshifts : float or list[float]
             The redshifts whose closest steps should be kept.
+        tolerance : float, default = 0.01
+            The largest difference allowed between a requested redshift and the
+            redshift of the step it selects.
 
         Returns
         -------
@@ -280,13 +301,18 @@ class PowerSpectrum:
         Raises
         ------
         ValueError
-            If no step is within 0.01 of a redshift (the message names the
-            closest steps), or if a redshift is not finite.
+            If no step is within ``tolerance`` of a redshift (the message names
+            the closest steps), if a redshift is not finite, or if ``tolerance``
+            is negative or not finite.
         """
+        if not np.isfinite(tolerance) or tolerance < 0:
+            raise ValueError(
+                f"The tolerance must be finite and non-negative, got {tolerance}"
+            )
         return _with_step_indices(
             self,
             [
-                _redshift_index(self.steps, self.redshifts, z)
+                _redshift_index(self.steps, self.redshifts, z, tolerance)
                 for z in _flatten_args(redshifts)
             ],
         )
@@ -480,13 +506,15 @@ def _step_index(steps: np.ndarray, step: int) -> int:
     return int(matches[0])
 
 
-def _redshift_index(steps: np.ndarray, redshifts: np.ndarray, redshift: float) -> int:
-    """The index of the step closest to ``redshift``, within REDSHIFT_TOLERANCE."""
+def _redshift_index(
+    steps: np.ndarray, redshifts: np.ndarray, redshift: float, tolerance: float
+) -> int:
+    """The index of the step closest to ``redshift``, within ``tolerance``."""
     if not np.isfinite(redshift):
         raise ValueError(f"The redshift must be finite, got {redshift}")
     distance = np.abs(redshifts - redshift)
     index = int(np.argmin(distance))
-    if distance[index] <= REDSHIFT_TOLERANCE:
+    if distance[index] <= tolerance:
         return index
     below = np.flatnonzero(redshifts < redshift)
     above = np.flatnonzero(redshifts > redshift)
@@ -502,6 +530,6 @@ def _redshift_index(steps: np.ndarray, redshifts: np.ndarray, redshift: float) -
         f"step {steps[i]} (z = {redshifts[i]:.4f})" for i in closest
     )
     raise ValueError(
-        f"No step of this power spectrum is within {REDSHIFT_TOLERANCE} of redshift "
+        f"No step of this power spectrum is within {tolerance} of redshift "
         f"{redshift}. The closest are {candidates}."
     )

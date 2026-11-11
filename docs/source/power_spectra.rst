@@ -64,10 +64,12 @@ of the power in a bin is ``P / sqrt(n_modes)``:
 
    error = pk_cdm / np.sqrt(ps.n_modes)
 
-HACC does not subtract the shot noise. The header block ``power_spectrum`` records
-how HACC measured the spectra, such as the grid size, the mass assignment and the
-bins. As for a dataset, the cosmology and the simulation parameters are available
-as ``ps.cosmology`` and ``ps.simulation``.
+:py:attr:`ps.parameters <opencosmo.PowerSpectrum.parameters>` returns a
+dictionary of the parameters used during measurement, such as the grid size, the
+mass assignment and the bins. Check ``ps.parameters["shot_noise_subtracted"]`` to
+see whether the shot noise has been subtracted from the spectra. As for a dataset,
+the cosmology and the simulation parameters are available as ``ps.cosmology`` and
+``ps.simulation``.
 
 Units
 -----
@@ -83,8 +85,9 @@ Selecting a redshift
 --------------------
 
 ``with_redshifts(z)`` selects the step whose redshift is closest to ``z``. You may
-also pass a list of redshifts to select several steps. HACC steps lie within a
-few thousandths of round redshifts, so ``with_redshifts(0.5)`` selects the step at
-z = 0.4987 in a typical hydro sim. If no step is within 0.01 of ``z``, the call
-raises a ``ValueError`` that names the closest steps. Use ``with_steps`` to select
-a step by number.
+also pass a list of redshifts to select several steps. Simulation steps are often
+not at exactly round redshifts, so ``with_redshifts(0.5)`` may select a step at
+z = 0.4987, for example. If no step is within 0.01 of ``z``, the call raises a
+``ValueError`` that names the closest steps. Pass ``tolerance`` to change this
+limit, for example ``with_redshifts(0.5, tolerance=0.05)``. Use ``with_steps`` to
+select a step by number.
