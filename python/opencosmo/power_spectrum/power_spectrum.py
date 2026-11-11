@@ -23,6 +23,14 @@ PREFIX = "pk_"
 REDSHIFT_TOLERANCE = 0.01
 
 
+"""
+Note to maintainers: The PowerSpectrum class intentionally does not mirror the state/facade
+construction of the other user-facing classes. It does not holds datasets, implements only
+a small subset of the standard API, and reads all of its data eagerly. In general, datat types 
+like this should be treated separately.
+"""
+
+
 @dataclass(frozen=True, eq=False, repr=False)
 class PowerSpectrum:
     """
