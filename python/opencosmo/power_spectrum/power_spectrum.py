@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, fields, replace
 from typing import TYPE_CHECKING, Literal
 
@@ -40,7 +41,7 @@ class PowerSpectrum:
 
         ps = oc.open("power_spectrum.hdf5")
         k = ps.k
-        pk_cdm = ps.get_data("cdm", redshift=0)
+        pk_cdm = ps.select("cdm").with_redshifts(0).get_data()
     """
 
     # Power spectra are small, so the whole file is read when it is opened. Unlike
@@ -59,7 +60,7 @@ class PowerSpectrum:
     """The number of independent modes in each bin. The sampling error of the
     power in a bin is ``P / sqrt(n_modes)``. Read-only."""
     _k: np.ndarray
-    # Shape (n_components, n_steps, n_k), in the order of ``components``.
+    # _spectra Shape (n_components, n_steps, n_k), in the order of ``components``.
     _spectra: np.ndarray
     _unit_handler: UnitHandler
 
@@ -162,41 +163,146 @@ class PowerSpectrum:
         """
         return _apply_units(self._unit_handler, "k", self._k)
 
-    def get_data(
-        self,
-        components: str | list[str] = "all",
-        step: int | None = None,
-        redshift: float | list[float] | None = None,
-        format: str = "astropy",
-    ):
+    def select(self, *components: str | Iterable[str]) -> PowerSpectrum:
         """
-        Get the power spectrum of one or more components. Without a step or
-        redshift, each spectrum covers all steps as an array of shape
-        (n_steps, n_k). With a single step or redshift, it covers that step only,
-        with shape (n_k,). With a list of redshifts, it covers those steps as an
-        array of shape (n_selected, n_k).
-
-        When more than one step is selected, the output also has a "redshift"
-        column with the redshift of each step, with shape (n_steps,). The spectrum
-        of a component is NaN at the steps where it has no
-        particles, for example the black holes at early steps.
+        Create a new power spectrum with a subset of the components, like
+        :py:meth:`Dataset.select <opencosmo.Dataset.select>`. Pass "all" to keep
+        every component.
 
         Parameters
         ----------
-        components: str or list of str, default="all"
-            The components to get: "all", one of :py:attr:`components`, or a list
-            of them. "all" and a list return the spectra of every requested
-            component keyed by name in the output format's container; a single
-            named component is returned on its own, like a single-column
-            :py:meth:`Dataset.get_data <opencosmo.Dataset.get_data>` call.
-        step: int, optional
-            The step of the spectrum. Must be one of :py:attr:`steps`.
-        redshift: float or list of float, optional
-            The redshift(s) of the spectrum. Each value selects the step whose
-            redshift in :py:attr:`redshifts` is closest to it, and it fails if
-            that step is more than 0.01 away. HACC steps lie within a few
-            thousandths of round redshifts, so ``redshift=0.5`` selects the step at
-            z = 0.4987 in the SCIDAC simulations. Cannot be combined with ``step``.
+        *components : str or list[str]
+            The components to keep: "all", one of :py:attr:`components`, or
+            several of them.
+
+        Returns
+        -------
+        power_spectrum : PowerSpectrum
+            The new power spectrum with only the selected components.
+
+        Raises
+        ------
+        ValueError
+            If any of the given components are not in the power spectrum.
+        """
+        names = _resolve_components(self.components, _flatten_args(components))
+        indices = [self.components.index(name) for name in names]
+        return replace(
+            self,
+            components=tuple(names),
+            _spectra=_read_only(self._spectra[indices]),
+        )
+
+    def drop(self, *components: str | Iterable[str]) -> PowerSpectrum:
+        """
+        Create a new power spectrum without the provided components, like
+        :py:meth:`Dataset.drop <opencosmo.Dataset.drop>`.
+
+        Parameters
+        ----------
+        *components : str or list[str]
+            The components to drop: one of :py:attr:`components` or several of
+            them.
+
+        Returns
+        -------
+        power_spectrum : PowerSpectrum
+            The new power spectrum without the dropped components.
+
+        Raises
+        ------
+        ValueError
+            If any of the given components are not in the power spectrum, or if
+            dropping them would leave no components.
+        """
+        requested = _flatten_args(components)
+        if requested == ["all"]:
+            requested = list(self.components)
+        dropped = set(_resolve_components(self.components, requested))
+        kept = tuple(name for name in self.components if name not in dropped)
+        if not kept:
+            raise ValueError("Cannot drop every component of a power spectrum")
+        indices = [self.components.index(name) for name in kept]
+        return replace(
+            self, components=kept, _spectra=_read_only(self._spectra[indices])
+        )
+
+    def with_steps(self, *steps: int | Iterable[int]) -> PowerSpectrum:
+        """
+        Create a new power spectrum that covers only the given simulation steps.
+
+        Parameters
+        ----------
+        *steps : int or list[int]
+            The steps to keep. Each must be one of :py:attr:`steps`.
+
+        Returns
+        -------
+        power_spectrum : PowerSpectrum
+            The new power spectrum restricted to the selected steps.
+
+        Raises
+        ------
+        ValueError
+            If any step is not in the power spectrum.
+        """
+        return _with_step_indices(
+            self, [_step_index(self.steps, step) for step in _flatten_args(steps)]
+        )
+
+    def with_redshifts(self, *redshifts: float | Iterable[float]) -> PowerSpectrum:
+        """
+        Create a new power spectrum that covers only the steps closest to the
+        given redshifts. Each value selects the step whose redshift in
+        :py:attr:`redshifts` is closest to it, and it fails if that step is more
+        than 0.01 away. HACC steps lie within a few thousandths of round
+        redshifts, so ``with_redshifts(0.5)`` selects the step at z = 0.4987 in
+        the SCIDAC simulations.
+
+        Parameters
+        ----------
+        *redshifts : float or list[float]
+            The redshifts whose closest steps should be kept.
+
+        Returns
+        -------
+        power_spectrum : PowerSpectrum
+            The new power spectrum restricted to the selected steps.
+
+        Raises
+        ------
+        ValueError
+            If no step is within 0.01 of a redshift (the message names the
+            closest steps), or if a redshift is not finite.
+        """
+        return _with_step_indices(
+            self,
+            [
+                _redshift_index(self.steps, self.redshifts, z)
+                for z in _flatten_args(redshifts)
+            ],
+        )
+
+    def get_data(
+        self,
+        format: str = "astropy",
+        return_error: bool = False,
+    ):
+        """
+        Get the power spectra of all :py:attr:`components` at all
+        :py:attr:`steps`, as arrays of shape (n_steps, n_k). Use
+        :py:meth:`select`/:py:meth:`drop` to choose components and
+        :py:meth:`with_steps`/:py:meth:`with_redshifts` to choose steps first.
+
+        When more than one step is selected, the output also has a "redshift"
+        column with the redshift of each step, with shape (n_steps,). The
+        spectrum of a component is NaN at the steps where it has no particles,
+        for example the black holes at early steps.
+
+        Parameters
+        ----------
+        return_error: bool, default = False
+            Return the sampling error associated with each component: P(k) / sqrt(N_modes(k))
         format: str, default="astropy"
             The format to output the data in. Currently supported are "astropy",
             "numpy", "pandas", "polars", "arrow", and "jax". The optional formats
@@ -213,31 +319,27 @@ class PowerSpectrum:
         Raises
         ------
         ValueError
-            If a component or step is not in the file, if no step is within
-            0.01 of a redshift (the message names the closest steps), if both
-            a step and a redshift are given, or if the format is unknown.
+            If the format is unknown.
         ImportError
             If the format requires a package that is not installed.
         """
         from opencosmo.dataset.formats import convert_data, verify_format
 
-        names = _resolve_components(self.components, components)
-        selection = _step_selection(self.steps, self.redshifts, step, redshift)
         data = {}
-        for name in names:
+        for name in self.components:
             spectrum = self._spectra[self.components.index(name)]
             # The stored arrays are read-only, so slices and views of them can be
             # handed out without copying.
-            values = spectrum if selection is None else spectrum[selection]
-            data[f"{PREFIX}{name}"] = values
+            data[f"{PREFIX}{name}"] = spectrum
         data = self._unit_handler.apply_units(data, unit_kwargs={})
         data = {name.removeprefix(PREFIX): value for name, value in data.items()}
-        if selection is None or isinstance(selection, list):
-            data["redshift"] = (
-                self.redshifts if selection is None else self.redshifts[selection]
-            )
+        if return_error:
+            data |= compute_error(data, self.n_modes)
+        if len(self.steps) > 1:
+            data["redshift"] = self.redshifts
+
         verify_format(format)
-        return convert_data(data, format, wrap_single=len(data) != 1)
+        return convert_data(data, format, wrap_single=False)
 
     def with_units(
         self,
@@ -289,17 +391,17 @@ def read_power_spectrum(target: DatasetTarget) -> PowerSpectrum:
     )
     return PowerSpectrum(
         header=target.header.with_units(UnitConvention.COMOVING),
-        steps=__read_only(group["step"][:]),
-        redshifts=__read_only(group["redshift"][:]),
-        _k=__read_only(group["k"][:]),
-        n_modes=__read_only(group["n_modes"][:]),
+        steps=_read_only(group["step"][:]),
+        redshifts=_read_only(group["redshift"][:]),
+        _k=_read_only(group["k"][:]),
+        n_modes=_read_only(group["n_modes"][:]),
         components=tuple(name.removeprefix(PREFIX) for name in names),
-        _spectra=__read_only(np.stack([group[name][:] for name in names])),
+        _spectra=_read_only(np.stack([group[name][:] for name in names])),
         _unit_handler=unit_handler,
     )
 
 
-def __read_only(array: np.ndarray) -> np.ndarray:
+def _read_only(array: np.ndarray) -> np.ndarray:
     # A view of a read-only array cannot be made writeable again, unlike the array
     # that owns the data.
     array.flags.writeable = False
@@ -320,7 +422,7 @@ def _resolve_components(
     if isinstance(components, str):
         requested = list(available) if components == "all" else [components]
     else:
-        requested = list(components)
+        requested = list(available) if components == ["all"] else list(components)
         if not requested:
             raise ValueError(
                 "Pass at least one component. Available components: "
@@ -335,28 +437,39 @@ def _resolve_components(
     return list(dict.fromkeys(requested))
 
 
-def _step_selection(
-    steps: np.ndarray,
-    redshifts: np.ndarray,
-    step: int | None,
-    redshift: float | list[float] | None,
-) -> int | list[int] | None:
-    """None for all steps, an index for one step, or a list of indices."""
-    if step is not None and redshift is not None:
-        raise ValueError("Pass either a step or a redshift, not both")
-    if step is not None:
-        matches = np.flatnonzero(steps == step)
-        if len(matches) == 0:
-            raise ValueError(
-                f"Step {step} is not in this power spectrum. Available steps: "
-                f"{', '.join(map(str, steps))}"
-            )
-        return int(matches[0])
-    if redshift is not None:
-        if isinstance(redshift, (list, tuple, np.ndarray)):
-            return [_redshift_index(steps, redshifts, z) for z in redshift]
-        return _redshift_index(steps, redshifts, redshift)
-    return None
+def compute_error(data: dict[str, np.ndarray], nmodes: np.ndarray):
+    return {f"{name}_error": d / np.sqrt(nmodes) for name, d in data.items()}
+
+
+def _flatten_args(values: tuple) -> list:
+    """Flatten ``select("a", ["b", "c"])``-style variadic arguments."""
+    flat = []
+    for value in values:
+        if isinstance(value, str) or not isinstance(value, Iterable):
+            flat.append(value)
+        else:
+            flat.extend(value)
+    return flat
+
+
+def _with_step_indices(power_spectrum: PowerSpectrum, indices: list[int]):
+    return replace(
+        power_spectrum,
+        steps=power_spectrum.steps[indices],
+        redshifts=power_spectrum.redshifts[indices],
+        _spectra=_read_only(power_spectrum._spectra[:, indices, :]),
+    )
+
+
+def _step_index(steps: np.ndarray, step: int) -> int:
+    """The index of ``step`` in ``steps``."""
+    matches = np.flatnonzero(steps == step)
+    if len(matches) == 0:
+        raise ValueError(
+            f"Step {step} is not in this power spectrum. Available steps: "
+            f"{', '.join(map(str, steps))}"
+        )
+    return int(matches[0])
 
 
 def _redshift_index(steps: np.ndarray, redshifts: np.ndarray, redshift: float) -> int:

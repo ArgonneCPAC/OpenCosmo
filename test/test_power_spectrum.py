@@ -31,14 +31,15 @@ def test_open(hydro):
     assert hydro.redshifts.shape == (n_steps,)
     assert hydro.k.shape == (n_k,)
     assert np.all(np.diff(hydro.k) > 0)
+    data = hydro.get_data()
     for component in hydro.components:
-        assert hydro.get_data(component)[component].shape == (n_steps, n_k)
+        assert data[component].shape == (n_steps, n_k)
 
 
 def test_open_gravity_only(test_data):
     ps = oc.open(test_data.power_spectrum.gravity_only)
     assert ps.components == ("total",)
-    assert ps.get_data("total")["total"].shape == (len(ps.steps), len(ps.k))
+    assert ps.get_data()["total"].shape == (len(ps.steps), len(ps.k))
 
 
 def test_header(hydro):
@@ -51,18 +52,18 @@ def test_header(hydro):
 
 def test_comoving_units(hydro):
     assert hydro.k.unit == u.Mpc**-1
-    assert hydro.get_data("cdm")["cdm"].unit == u.Mpc**3
+    assert hydro.get_data()["cdm"].unit == u.Mpc**3
 
 
 def test_scalefree_units(hydro):
     scalefree = hydro.with_units("scalefree")
     h = hydro.cosmology.h
     assert scalefree.k.unit == cu.littleh / u.Mpc
-    assert scalefree.get_data("total")["total"].unit == (u.Mpc / cu.littleh) ** 3
+    assert scalefree.get_data()["total"].unit == (u.Mpc / cu.littleh) ** 3
     assert np.allclose(scalefree.k.value * h, hydro.k.value)
     assert np.allclose(
-        scalefree.get_data("total")["total"].value / h**3,
-        hydro.get_data("total")["total"].value,
+        scalefree.get_data()["total"].value / h**3,
+        hydro.get_data()["total"].value,
     )
 
 
@@ -74,7 +75,7 @@ def test_physical_units_are_refused(hydro):
 def test_unitless(hydro):
     unitless = hydro.with_units("unitless")
     assert not isinstance(unitless.k, u.Quantity)
-    assert not isinstance(unitless.get_data("total")["total"], u.Quantity)
+    assert not isinstance(unitless.get_data()["total"], u.Quantity)
 
 
 def test_with_units_returns_new_object(hydro):
@@ -83,38 +84,86 @@ def test_with_units_returns_new_object(hydro):
     assert hydro.k.unit == u.Mpc**-1
 
 
-def test_get_step(hydro):
-    full = hydro.get_data("cdm")["cdm"]
-    for i, step in enumerate(hydro.steps):
-        assert np.array_equal(hydro.get_data("cdm", step=step), full[i])
+def test_select(hydro):
+    selected = hydro.select("cdm", "gas")
+    assert selected is not hydro
+    assert selected.components == ("cdm", "gas")
+    assert set(hydro.components) == HYDRO_COMPONENTS
+    full = hydro.get_data()
+    data = selected.get_data()
+    assert set(data.colnames) == {"cdm", "gas", "redshift"}
+    for name in ("cdm", "gas"):
+        assert np.array_equal(data[name], full[name])
 
 
-def test_get_redshift(hydro):
+def test_select_all(hydro):
+    assert hydro.select("all").components == hydro.components
+    assert hydro.select(list(hydro.components)).components == hydro.components
+
+
+def test_drop(hydro):
+    dropped = hydro.drop("agn", ["wind", "star"])
+    assert dropped is not hydro
+    assert "agn" not in dropped.components
+    assert "wind" not in dropped.components
+    assert "star" not in dropped.components
+    assert set(dropped.components) == HYDRO_COMPONENTS - {"agn", "wind", "star"}
+    full = hydro.get_data()
+    data = dropped.get_data()
+    for name in dropped.components:
+        assert np.array_equal(data[name], full[name])
+
+
+def test_drop_everything(hydro):
+    with pytest.raises(ValueError, match="Cannot drop every component"):
+        hydro.drop("all")
+
+
+def test_with_steps(hydro):
+    steps = [int(hydro.steps[0]), int(hydro.steps[-1])]
+    selected = hydro.with_steps(steps)
+    assert selected is not hydro
+    assert list(selected.steps) == steps
+    assert np.allclose(selected.redshifts, hydro.redshifts[[0, -1]])
+    full = hydro.select("total").get_data()["total"]
+    data = selected.select("total").get_data()["total"]
+    for row, i in enumerate((0, -1)):
+        assert np.array_equal(data[row], full[i])
+
+
+def test_with_redshifts(hydro):
     i = len(hydro.steps) // 2
     redshift = hydro.redshifts[i] + 0.005
-    single = hydro.get_data("total", redshift=redshift)
-    assert single.shape == (len(hydro.k),)
-    all_steps = hydro.get_data("total")
-    assert np.array_equal(single, all_steps["total"][i])
+    single = hydro.with_redshifts(redshift)
+    assert single.steps.shape == (1,)
+    # A single component at a single step is returned on its own.
+    assert np.array_equal(
+        single.select("total").get_data(),
+        hydro.select("total").get_data()["total"][i : i + 1],
+    )
 
 
-def test_get_multiple_redshifts(hydro):
+def test_with_multiple_redshifts(hydro):
     redshifts = list(hydro.redshifts[::3] + 0.005)
-    data = hydro.get_data("total", redshift=redshifts)
+    selected = hydro.with_redshifts(redshifts)
+    data = selected.select("total").get_data()
     assert data["total"].shape == (len(redshifts), len(hydro.k))
-    assert "redshift" in data.colnames
     assert np.allclose(data["redshift"], hydro.redshifts[::3])
+    full = hydro.select("total").get_data()
     for row, i in enumerate(range(0, len(hydro.steps), 3)):
-        assert np.array_equal(
-            data["total"][row], hydro.get_data("total", step=hydro.steps[i])
-        )
+        assert np.array_equal(data["total"][row], full["total"][i])
 
 
 def test_redshift_column_in_all_steps_output(hydro):
     data = hydro.get_data()
     assert np.allclose(data["redshift"], hydro.redshifts)
-    single = hydro.get_data("cdm", step=hydro.steps[0])
-    assert single.shape == (len(hydro.k),)
+    # A single step has no "redshift" column, and a single component at a
+    # single step is returned on its own.
+    single = hydro.select("cdm").with_steps(hydro.steps[0]).get_data()
+    assert single.shape == (1, len(hydro.k))
+    # Several components at a single step still have no "redshift" column.
+    pair = hydro.select("cdm", "gas").with_steps(hydro.steps[0]).get_data()
+    assert set(pair.colnames) == {"cdm", "gas"}
 
 
 def test_redshift_outside_tolerance(hydro):
@@ -129,14 +178,14 @@ def test_redshift_outside_tolerance(hydro):
         rf"step {steps[i]} \(z = {redshifts[i]:.4f}\)"
     )
     with pytest.raises(ValueError, match=message):
-        hydro.get_data(redshift=redshift)
+        hydro.with_redshifts(redshift)
 
 
 def test_redshift_beyond_last_step(hydro):
     with pytest.raises(
         ValueError, match=r"The closest are step 624 \(z = 0\.0000\)\.$"
     ):
-        hydro.get_data(redshift=-0.5)
+        hydro.with_redshifts(-0.5)
 
 
 def test_get_all_components(hydro):
@@ -150,20 +199,11 @@ def test_get_all_components(hydro):
         assert np.all(data[name].unit == u.Mpc**3)
 
 
-def test_get_component_list(hydro):
-    data = hydro.get_data(["cdm", "gas"], step=hydro.steps[0])
-    assert set(data.colnames) == {"cdm", "gas"}
-    assert data["cdm"].shape == (len(hydro.k),)
-    assert np.array_equal(
-        data["cdm"].value, hydro.get_data("cdm", step=hydro.steps[0]).value
-    )
-
-
 def test_get_data_numpy_format(hydro):
     data = hydro.get_data(format="numpy")
     assert isinstance(data, dict)
     assert not isinstance(data["cdm"], u.Quantity)
-    single = hydro.get_data("cdm", step=hydro.steps[0], format="numpy")
+    single = hydro.select("cdm").with_steps(hydro.steps[0]).get_data(format="numpy")
     assert isinstance(single, np.ndarray)
 
 
@@ -172,29 +212,29 @@ def test_get_data_unknown_format(hydro):
         hydro.get_data(format="parquet")
 
 
-def test_get_data_empty_component_list(hydro):
+def test_select_empty(hydro):
     with pytest.raises(ValueError, match="at least one component"):
-        hydro.get_data([])
+        hydro.select([])
 
 
 def test_unknown_component(hydro):
     with pytest.raises(ValueError, match="no component 'dm'"):
-        hydro.get_data("dm")
+        hydro.select("dm")
+
+
+def test_unknown_component_drop(hydro):
+    with pytest.raises(ValueError, match="no component 'dm'"):
+        hydro.drop("dm")
 
 
 def test_unknown_step(hydro):
     with pytest.raises(ValueError, match="Step 1 is not in this power spectrum"):
-        hydro.get_data(step=1)
-
-
-def test_step_and_redshift(hydro):
-    with pytest.raises(ValueError, match="either a step or a redshift"):
-        hydro.get_data(step=hydro.steps[0], redshift=0)
+        hydro.with_steps(1)
 
 
 def test_nonfinite_redshift(hydro):
     with pytest.raises(ValueError, match="must be finite"):
-        hydro.get_data(redshift=np.nan)
+        hydro.with_redshifts(np.nan)
 
 
 def test_axes_are_read_only(hydro):
@@ -210,8 +250,8 @@ def test_returned_values_are_read_only(hydro):
     unitless = hydro.with_units("unitless")
     for value in (
         unitless.k,
-        unitless.get_data("total")["total"],
-        unitless.get_data("cdm", step=unitless.steps[0]),
+        unitless.get_data()["total"],
+        unitless.select("cdm").with_steps(unitless.steps[0]).get_data(),
     ):
         assert not value.flags.writeable
         with pytest.raises(ValueError, match="read-only"):
@@ -222,8 +262,9 @@ def test_missing_spectrum_is_nan(hydro_copy):
     with h5py.File(hydro_copy, "r+") as f:
         f["power_spectrum/pk_agn"][0] = np.nan
     ps = oc.open(hydro_copy)
-    assert np.all(np.isnan(ps.get_data("agn", step=ps.steps[0])))
-    assert not np.any(np.isnan(ps.get_data("agn")["agn"][1:]))
+    single = ps.select("agn").with_steps(ps.steps[0]).get_data()
+    assert np.all(np.isnan(single))
+    assert not np.any(np.isnan(ps.get_data()["agn"][1:]))
 
 
 def test_missing_axis(hydro_copy):
