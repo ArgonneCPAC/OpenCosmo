@@ -46,6 +46,8 @@ def verify_structure(
                         verify_structure_collection_data(ds_schema)
         case FileEntry.HEALPIX_MAP:
             verify_dataset_data(schema, has_index=False)
+        case FileEntry.POWER_SPECTRUM:
+            verify_power_spectrum_schema(schema)
         case FileEntry.PARTICLE_COLLECTION:
             for ds_schema in schema.children.values():
                 verify_dataset_data(ds_schema)
@@ -73,6 +75,12 @@ def schema_data_length(schema: Schema) -> int:
     match schema.type:
         case FileEntry.DATASET | FileEntry.HEALPIX_MAP:
             return data_group_length(schema)
+        case FileEntry.POWER_SPECTRUM:
+            # Every rank holds the full spectrum (EXACT combine strategy), so
+            # the length is the rank-local column length, never summed.
+            columns = schema.children["power_spectrum"].columns
+            column = next(iter(columns.values()), None)
+            return 0 if column is None else column.shape[0]
         case FileEntry.LIGHTCONE:
             if "data" in schema.children:  # single-dataset lightcone
                 return data_group_length(schema)
@@ -159,6 +167,39 @@ def verify_dataset_data(schema: Schema, has_index=True):
             raise ValueError(
                 "Sibling column groups must be the same length and have the same "
                 "combine strategy as the data group!"
+            )
+
+
+def verify_power_spectrum_schema(schema: Schema):
+    """
+    Verify a power spectrum. This requires a "power_spectrum" column group and a
+    "header" group. Within the column group, "step" and "redshift" must have the
+    same length, "k" and "n_modes" must have the same length, and every "pk_*"
+    spectrum must be two-dimensional with shape (n_steps, n_k).
+    """
+    children = schema.children
+    if "power_spectrum" not in children or "header" not in children:
+        raise ValueError(
+            "Power spectra must have a power_spectrum group and a header group"
+        )
+    columns = children["power_spectrum"].columns
+    for required in ("step", "redshift", "k", "n_modes"):
+        if required not in columns:
+            raise ValueError(f'Power spectrum group is missing "{required}"')
+    spectra = {name: w for name, w in columns.items() if name.startswith("pk_")}
+    if not spectra:
+        raise ValueError("Power spectrum group has no pk_* columns")
+    n_steps = len(columns["step"])
+    if len(columns["redshift"]) != n_steps:
+        raise ValueError('"step" and "redshift" must have the same length')
+    n_k = len(columns["k"])
+    if len(columns["n_modes"]) != n_k:
+        raise ValueError('"k" and "n_modes" must have the same length')
+    for name, spectrum in spectra.items():
+        if spectrum.shape != (n_steps, n_k):
+            raise ValueError(
+                f'Power spectrum column "{name}" must have shape ({n_steps}, {n_k}), '
+                f"got {spectrum.shape}"
             )
 
 

@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.iopen import DatasetTarget
+    from opencosmo.io.schema import Schema
     from opencosmo.units.handler import UnitHandler
 
 PREFIX = "pk_"
@@ -98,6 +99,56 @@ class PowerSpectrum:
 
     def __dir__(self):
         return [*self.header.parameters, *object.__dir__(self)]
+
+    def make_schema(self, path: str) -> Schema:
+        """
+        Prep to write the power spectrum. This should not be called directly by
+        the user. The opencosmo.write file writer automatically handles the file
+        context.
+
+        Parameters
+        ----------
+        path : str
+            The path of the file the power spectrum will be written to.
+
+        Returns
+        -------
+        schema : opencosmo.io.schema.Schema
+        """
+        from opencosmo.io.schema import FileEntry, make_schema
+        from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter
+
+        # Columns are written with their base-convention units, as stored on disk.
+        units = self._unit_handler.base_units
+
+        def writer(name: str, values: np.ndarray) -> ColumnWriter:
+            unit = units.get(name)
+            attrs = {} if unit is None else {"unit": str(unit)}
+            # Every rank holds the identical spectrum, so under MPI only the
+            # first rank writes each column.
+            return ColumnWriter.from_numpy_array(
+                values, strategy=ColumnCombineStrategy.EXACT, attrs=attrs
+            )
+
+        columns = {
+            "step": writer("step", self.steps),
+            "redshift": writer("redshift", self.redshifts),
+            "k": writer("k", self._k),
+            "n_modes": writer("n_modes", self.n_modes),
+        }
+        for i, name in enumerate(self.components):
+            columns[f"{PREFIX}{name}"] = writer(f"{PREFIX}{name}", self._spectra[i])
+        spectrum_schema = make_schema(
+            "power_spectrum", FileEntry.COLUMNS, columns=columns
+        )
+        return make_schema(
+            path.split("/")[-1],
+            FileEntry.POWER_SPECTRUM,
+            children={
+                "power_spectrum": spectrum_schema,
+                "header": self.header.dump(),
+            },
+        )
 
     @property
     def k(self) -> u.Quantity | np.ndarray:
