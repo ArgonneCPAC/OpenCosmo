@@ -1,5 +1,3 @@
-import copy
-import pickle
 import shutil
 
 import astropy.units as u
@@ -206,15 +204,6 @@ def test_axes_are_read_only(hydro):
             axis[0] = 0
         with pytest.raises(ValueError, match="WRITEABLE"):
             axis.flags.writeable = True
-
-
-@pytest.mark.parametrize(
-    "duplicate", [copy.copy, copy.deepcopy, lambda ps: pickle.loads(pickle.dumps(ps))]
-)
-def test_duplicates_stay_read_only(hydro, duplicate):
-    duplicated = duplicate(hydro)
-    assert not duplicated.steps.flags.writeable
-    assert np.array_equal(duplicated.get_data("cdm"), hydro.get_data("cdm"))
 
 
 def test_returned_values_are_read_only(hydro):

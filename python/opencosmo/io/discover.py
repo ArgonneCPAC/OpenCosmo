@@ -236,7 +236,7 @@ def __is_power_spectrum_path(path: str) -> bool:
     return parts[-1] == "power_spectrum" and "header" not in parts
 
 
-def __power_spectrum_shape_error(
+def __verify_power_spectrum_shape(
     datasets: dict[str, h5py.Dataset], where: str
 ) -> str | None:
     """Check the shapes of the arrays in a /power_spectrum group.
@@ -647,7 +647,7 @@ def discover_file(path: Path) -> FileLayout:
                 # fetched by the walk above, so checking here is free.
                 row_count = 0
                 if is_power_spectrum:
-                    error = __power_spectrum_shape_error(column_datasets, data_path)
+                    error = __verify_power_spectrum_shape(column_datasets, data_path)
                     if error is not None:
                         return FileLayout(path=path, groups=(), error=error)
                     row_count = column_datasets["step"].shape[0]
