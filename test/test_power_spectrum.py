@@ -247,6 +247,142 @@ def test_get_data_numpy_format(hydro):
     assert isinstance(single, np.ndarray)
 
 
+ALL_FORMATS = ["astropy", "numpy", "pandas", "polars", "arrow", "jax"]
+
+
+def _to_numpy(value):
+    """Convert one output-format value back to a numpy array for comparison."""
+    import jax.numpy as jnp
+    import pyarrow as pa
+
+    if isinstance(value, u.Quantity):
+        return value.value
+    if isinstance(value, pa.FixedSizeListArray):
+        # 2-D spectra are stored as one fixed-size list per row.
+        return value.values.to_numpy().reshape(len(value), value.type.list_size)
+    if isinstance(value, pa.Array):
+        return value.to_numpy()
+    if isinstance(value, jnp.ndarray):
+        return np.asarray(value)
+    return np.asarray(value)
+
+
+@pytest.mark.parametrize("format", ALL_FORMATS)
+def test_get_data_all_formats(hydro, format):
+    from astropy.table import QTable
+
+    data = hydro.get_data(format=format)
+    reference = hydro.get_data(format="numpy")
+
+    if format == "astropy":
+        assert isinstance(data, QTable)
+        assert set(data.colnames) == set(hydro.components) | {"redshift"}
+        columns = {name: _to_numpy(data[name]) for name in data.colnames}
+    elif format == "numpy":
+        assert isinstance(data, dict)
+        assert set(data) == set(hydro.components) | {"redshift"}
+        columns = {name: _to_numpy(value) for name, value in data.items()}
+    elif format == "pandas":
+        import pandas as pd
+
+        assert isinstance(data, pd.DataFrame)
+        # 2-D spectra are stored as one array per row.
+        columns = {
+            name: (
+                np.stack(data[name].to_numpy())
+                if name != "redshift"
+                else data[name].to_numpy()
+            )
+            for name in data.columns
+        }
+    elif format == "polars":
+        import polars as pl
+
+        assert isinstance(data, pl.DataFrame)
+        columns = {name: _to_numpy(data[name].to_numpy()) for name in data.columns}
+    elif format == "arrow":
+        import pyarrow as pa
+
+        assert isinstance(data, dict)
+        assert all(isinstance(v, pa.Array) for v in data.values())
+        columns = {name: _to_numpy(value) for name, value in data.items()}
+    else:  # jax
+        import jax.numpy as jnp
+
+        assert isinstance(data, dict)
+        assert all(isinstance(v, jnp.ndarray) for v in data.values())
+        columns = {name: _to_numpy(value) for name, value in data.items()}
+
+    for name, expected in reference.items():
+        assert np.allclose(columns[name], expected), name
+
+
+@pytest.mark.parametrize("format", ALL_FORMATS)
+def test_get_data_all_formats_single_step_single_component(hydro, format):
+    ps = hydro.select("cdm").with_steps(hydro.steps[0])
+    data = ps.get_data(format=format)
+    expected = hydro.get_data(format="numpy")["cdm"][0]
+
+    if format == "astropy":
+        assert isinstance(data, u.Quantity)
+        assert np.allclose(data.value, expected)
+    elif format == "numpy":
+        assert isinstance(data, np.ndarray)
+        assert np.allclose(data, expected)
+    elif format == "pandas":
+        import pandas as pd
+
+        assert isinstance(data, pd.Series)
+        rows = data.to_numpy()
+        # A (1, n_k) spectrum is stored as a single one-element row.
+        assert np.allclose(rows[0] if rows.shape == (1,) else rows, expected)
+    elif format == "polars":
+        import polars as pl
+
+        assert isinstance(data, pl.Series)
+        assert np.allclose(_to_numpy(data.to_numpy()), expected)
+    elif format == "arrow":
+        import pyarrow as pa
+
+        assert isinstance(data, pa.Array)
+        assert np.allclose(_to_numpy(data), expected)
+    else:  # jax
+        import jax.numpy as jnp
+
+        assert isinstance(data, jnp.ndarray)
+        assert np.allclose(_to_numpy(data), expected)
+
+
+@pytest.mark.parametrize("format", ALL_FORMATS)
+def test_get_data_all_formats_return_error(hydro, format):
+    data = hydro.select("cdm", "gas").get_data(format=format, return_error=True)
+    reference = hydro.select("cdm", "gas").get_data(format="numpy", return_error=True)
+    expected_names = {"cdm", "cdm_error", "gas", "gas_error", "redshift"}
+
+    if format == "astropy":
+        names = set(data.colnames)
+        get = lambda d, n: d[n]
+    elif format in ("numpy", "arrow", "jax"):
+        names = set(data)
+        get = lambda d, n: d[n]
+    else:
+        names = set(data.columns)
+        assert names == expected_names
+
+        def get(d, n):
+            column = d[n].to_numpy()
+            return np.stack(column) if n != "redshift" else column
+
+    assert names == expected_names
+
+    n_modes = hydro.n_modes
+    for name in ("cdm", "gas"):
+        spectrum = _to_numpy(get(data, name))
+        error = _to_numpy(get(data, f"{name}_error"))
+        assert np.allclose(error, spectrum / np.sqrt(n_modes))
+        assert np.allclose(spectrum, reference[name])
+
+
 def test_get_data_unknown_format(hydro):
     with pytest.raises(ValueError, match="Unknown data output format"):
         hydro.get_data(format="parquet")
