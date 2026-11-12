@@ -137,6 +137,19 @@ class AnalysisPaths:
 
 
 @dataclass(frozen=True)
+class PowerSpectrumPaths:
+    root: Path
+
+    @property
+    def hydro(self) -> Path:
+        return self.root / "hydro.hdf5"
+
+    @property
+    def gravity_only(self) -> Path:
+        return self.root / "gravity_only.hdf5"
+
+
+@dataclass(frozen=True)
 class TestDataPaths:
     root: Path
 
@@ -155,6 +168,10 @@ class TestDataPaths:
     @property
     def healpix_map(self) -> Path:
         return self.root / "healpix_map" / "test_map.hdf5"
+
+    @property
+    def power_spectrum(self) -> PowerSpectrumPaths:
+        return PowerSpectrumPaths(self.root / "power_spectrum")
 
     @property
     def analysis(self) -> AnalysisPaths:

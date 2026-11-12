@@ -284,22 +284,40 @@ def convert_to_numpy(
 def __convert_to_pandas(data: dict[str, np.ndarray], wrap_single: bool = False):
     import pandas as pd
 
-    numpy_data = convert_to_numpy(data, wrap_single)
-    if isinstance(numpy_data, np.ndarray):  # only one column, wrap_single=False
-        return pd.Series(numpy_data, name=next(iter(data.keys())))
+    numpy_data = convert_to_numpy(data, True)
+    assert isinstance(numpy_data, dict)
+    numpy_data = {
+        key: value if value.ndim == 1 else list(value)
+        for key, value in numpy_data.items()
+    }
+
+    if len(numpy_data) == 1 and not wrap_single:
+        (name, arr) = next(iter(numpy_data.items()))
+
+        return pd.Series(arr, name=name)
 
     return pd.DataFrame(numpy_data, copy=True)
 
 
 def __convert_to_arrow(data: dict[str, np.ndarray], wrap_single: bool = False):
-    import pyarrow as pa
-
     numpy_data = convert_to_numpy(data, wrap_single)
     if isinstance(numpy_data, np.ndarray):
-        return pa.array(numpy_data)
+        return __to_arrow_array(numpy_data)
 
-    converted_data = ((kv[0], pa.array(kv[1])) for kv in data.items())
+    converted_data = ((kv[0], __to_arrow_array(kv[1])) for kv in numpy_data.items())
     return dict(converted_data)
+
+
+def __to_arrow_array(array: np.ndarray):
+    import pyarrow as pa
+
+    # Arrow arrays are 1-D; a 2-D array (e.g. a power spectrum's (n_steps, n_k)
+    # values) becomes one fixed-size list per row.
+    if array.ndim == 2:
+        return pa.FixedSizeListArray.from_arrays(
+            pa.array(array.ravel()), array.shape[1]
+        )
+    return pa.array(array)
 
 
 def __convert_to_polars(data: dict[str, np.ndarray], wrap_single: bool = False):

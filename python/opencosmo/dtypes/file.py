@@ -29,6 +29,7 @@ class DatasetType(Enum):
     snapshot_particles = "snapshot_particles"
     synthetic_galaxies = "synthetic_galaxies"
     healpix_map = "healpix_map"
+    power_spectrum = "power_spectrum"
 
 
 class FileParameters(BaseModel):

@@ -23,6 +23,7 @@ class FileEntry(Enum):
     LIGHTCONE = "lightcone"
     LIGHCONE_MAP = "lightcone_map"
     HEALPIX_MAP = "healpix_map"
+    POWER_SPECTRUM = "power_spectrum"
     COLUMNS = "columns"
     METADATA = "metadata"
     EMPTY = "empty"

@@ -237,6 +237,38 @@ class MapParams(BaseModel):
         return value
 
 
+class PowerSpectrumParams(BaseModel):
+    """
+    The parameters used during measurement of the power spectra in a power
+    spectrum file. Wavenumbers are comoving, and are stored in h/Mpc.
+    """
+
+    model_config = ConfigDict(frozen=True)
+    ACCESS_PATH: ClassVar[str] = "power_spectrum"
+    mass_assignment: str
+    window_deconvolved: bool
+    interlaced: bool
+    shot_noise_subtracted: bool
+    grid: int = Field(ge=1, description="Grid cells per dimension")
+    k_fundamental: float = Field(gt=0, description="Fundamental wavenumber")
+    k_nyquist: float = Field(gt=0, description="Nyquist wavenumber of the grid")
+    k_max: float = Field(gt=0, description="Upper limit of the stored bins")
+    k_max_nyquist_fraction: float = Field(gt=0)
+    binning: str
+    bin_k_min: float = Field(description="Lower edge of the first bin")
+    bin_width: float = Field(gt=0, description="Width of the bins")
+    n_bins_hacc: int = Field(ge=1, description="Number of bins written by HACC")
+
+    @field_validator(
+        "window_deconvolved", "interlaced", "shot_noise_subtracted", mode="before"
+    )
+    @classmethod
+    def numpy_bool_to_base(cls, value):
+        if isinstance(value, np.bool_):
+            return bool(value)
+        return value
+
+
 ORIGIN_PARAMETERS = {
     "required": {
         "simulation/parameters": HaccHydroSimulationParameters
@@ -265,7 +297,13 @@ DATATYPE_PARAMETERS: dict[str, dict[str, dict[str, type[BaseModel]]]] = {
         }
     },
     "healpix_map": {"required": {"map_params": MapParams}},
+    "power_spectrum": {"required": {"power_spectrum": PowerSpectrumParams}},
 }
+
+for _field in ("k_fundamental", "k_nyquist", "k_max", "bin_k_min", "bin_width"):
+    register_units(
+        PowerSpectrumParams, _field, cu.littleh / u.Mpc, UnitConvention.SCALEFREE
+    )
 
 register_units(
     HaccSimulationParameters, "box_size", u.Mpc / cu.littleh, UnitConvention.SCALEFREE

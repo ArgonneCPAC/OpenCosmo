@@ -27,6 +27,7 @@ The OpenCosmo Python Toolkit provides utilities for reading, writing and manipul
    main_api
    cols
    collections
+   power_spectra
    units
    io
 
@@ -51,6 +52,7 @@ The OpenCosmo Python Toolkit provides utilities for reading, writing and manipul
 
    io_ref
    dataset_ref
+   power_spectrum_ref
    collection_ref
    column_ref
    parameters_ref
