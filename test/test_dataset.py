@@ -948,3 +948,40 @@ def test_evaluate_overwrite(input_path):
     assert np.all(
         np.isclose(overwritten, data["fof_halo_mass"] * data["fof_halo_com_vx"])
     )
+
+
+def __bound_tags(state, region, snap=False):
+    bounded = dsops.bound(state, region, None, snap=snap)
+    data = dsops.get_data(
+        dsops.select(bounded, "fof_halo_tag"), "numpy", wrap_single=True
+    )
+    return bounded, np.sort(data["fof_halo_tag"])
+
+
+@pytest.mark.parametrize("snap", [False, True])
+def test_bound_after_sort(input_path, snap):
+    state = open_state(input_path)
+    region = oc.make_box((10, 10, 10), (60, 60, 60))
+    _, expected = __bound_tags(state, region, snap)
+    assert len(expected) > 0
+
+    sorted_state = dsops.sort_by(state, "fof_halo_mass", False)
+    bounded, found = __bound_tags(sorted_state, region, snap)
+    np.testing.assert_array_equal(found, expected)
+
+    assert bounded.sort_key == sorted_state.sort_key
+    mass = dsops.get_data(
+        dsops.select(bounded, "fof_halo_mass"), "numpy", wrap_single=True
+    )
+    assert np.all(np.diff(mass["fof_halo_mass"]) >= 0)
+
+
+@pytest.mark.parametrize("snap", [False, True])
+def test_bound_after_unordered_take_rows(input_path, snap):
+    state = open_state(input_path)
+    region = oc.make_box((10, 10, 10), (60, 60, 60))
+    _, expected = __bound_tags(state, region, snap)
+
+    rows = np.random.default_rng(0).permutation(len(state))
+    _, found = __bound_tags(dsops.take_rows(state, rows), region, snap)
+    np.testing.assert_array_equal(found, expected)

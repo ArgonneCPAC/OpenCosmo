@@ -434,7 +434,7 @@ def bound(state: DatasetState, region, select_by, snap: bool = False):
     if state.region is None:
         raise RuntimeError("A spatially indexed dataset must have a region")
     if not state.region.intersects(check_region):
-        return __take_rows(state, empty())
+        return __take_rows(state, empty(), bypass_sort=True)
 
     if not state.region.contains(check_region):
         warn(
@@ -447,13 +447,17 @@ def bound(state: DatasetState, region, select_by, snap: bool = False):
     contained_index, intersects_index = state.spatial_index.query(check_region)
     if snap:
         new_index = combine(contained_index, intersects_index)
-        new_index = project(state.raw_index, new_index)
-        new_state = __take_rows(state, new_index)
+        new_index = project(state.physical_index, new_index)
+        new_state = __take_rows(state, new_index, bypass_sort=True)
         return dataclasses.replace(new_state, region=check_region)
 
-    contained_index = project(state.raw_index, contained_index)
-    intersects_index = project(state.raw_index, intersects_index)
-    check_state = __take_rows(state, intersects_index)
+    # Positions are physical (handler order), so the sort is bypassed throughout
+    # and cleared on check_state so the containment mask is in the same order.
+    contained_index = project(state.physical_index, contained_index)
+    intersects_index = project(state.physical_index, intersects_index)
+    check_state = dataclasses.replace(
+        __take_rows(state, intersects_index, bypass_sort=True), sort_key=None
+    )
     if not state.header.file.is_lightcone:
         check_state = with_units(check_state, "scalefree", {})
 
@@ -469,7 +473,7 @@ def bound(state: DatasetState, region, select_by, snap: bool = False):
         np.concatenate([into_array(contained_index), into_array(new_intersects_index)])
     )
 
-    new_state = __take_rows(state, new_index)
+    new_state = __take_rows(state, new_index, bypass_sort=True)
     return dataclasses.replace(new_state, region=check_region)
 
 
@@ -726,11 +730,17 @@ def get_sorted_index(state: DatasetState) -> np.ndarray | None:
     return sorted_idx[::-1] if state.sort_key[1] else sorted_idx
 
 
-def __take_rows(state: DatasetState, rows: DataIndex) -> DatasetState:
+def __take_rows(
+    state: DatasetState, rows: DataIndex, bypass_sort: bool = False
+) -> DatasetState:
+    """
+    Take ``rows`` of ``state``. By default ``rows`` are positions in sorted order;
+    with ``bypass_sort`` they are positions in the handler's (physical) order.
+    """
     if len(state) == 0:
         return state
     rows = fold(HookPoint.IndexUpdate, IndexUpdateCtx(state, rows)).index
-    if (sorted_idx := get_sorted_index(state)) is not None:
+    if not bypass_sort and (sorted_idx := get_sorted_index(state)) is not None:
         rows = np.sort(sorted_idx[into_array(rows)])
     return dataclasses.replace(
         state,

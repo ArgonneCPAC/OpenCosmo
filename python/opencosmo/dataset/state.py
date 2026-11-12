@@ -91,6 +91,11 @@ class DatasetState:
         return self.open_kwargs
 
     @property
+    def physical_index(self) -> DataIndex:
+        """Raw rows in the handler's order, ignoring any sort."""
+        return self.raw_data_handler.index
+
+    @property
     def raw_index(self):
         from opencosmo.dataset.operations import get_sorted_index
         from opencosmo.index.mask import into_array

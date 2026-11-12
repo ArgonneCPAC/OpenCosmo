@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 from opencosmo.index import coalesce_chunks, combine, into_array
+from opencosmo.index.project import project
 
 
 def test_combine_chunked_sorts_and_coalesces_disjoint_ranges():
@@ -185,3 +186,21 @@ def test_coalesce_output_dtype_is_int64():
     )
     assert starts.dtype == np.int64
     assert sizes.dtype == np.int64
+
+
+def test_project_chunked_on_unordered_simple():
+    source = np.array([12, 3, 7, 20, 5, 15])
+    other = (np.array([4, 14]), np.array([4, 3]))
+    np.testing.assert_array_equal(project(source, other), [2, 4, 5])
+
+
+def test_project_chunked_on_unordered_chunked():
+    source = (np.array([10, 0]), np.array([5, 5]))
+    other = (np.array([3]), np.array([9]))
+    np.testing.assert_array_equal(into_array(project(source, other)), [0, 1, 8, 9])
+
+
+def test_project_chunked_on_ordered_chunked_is_unchanged():
+    source = (np.array([0, 10]), np.array([5, 5]))
+    other = (np.array([3]), np.array([9]))
+    np.testing.assert_array_equal(into_array(project(source, other)), [3, 4, 5, 6])
