@@ -266,7 +266,7 @@ class PowerSpectrum:
         Raises
         ------
         ValueError
-            If any step is not in the power spectrum.
+            If no steps are given, or if any step is not in the power spectrum.
         """
         return _with_step_indices(
             self, [_step_index(self.steps, step) for step in _flatten_args(steps)]
@@ -301,9 +301,9 @@ class PowerSpectrum:
         Raises
         ------
         ValueError
-            If no step is within ``tolerance`` of a redshift (the message names
-            the closest steps), if a redshift is not finite, or if ``tolerance``
-            is negative or not finite.
+            If no redshifts are given, if no step is within ``tolerance`` of a
+            redshift (the message names the closest steps), if a redshift is not
+            finite, or if ``tolerance`` is negative or not finite.
         """
         if not np.isfinite(tolerance) or tolerance < 0:
             raise ValueError(
@@ -487,10 +487,15 @@ def _flatten_args(values: tuple) -> list:
 
 
 def _with_step_indices(power_spectrum: PowerSpectrum, indices: list[int]):
+    if not indices:
+        raise ValueError(
+            "Pass at least one step or redshift. Available steps: "
+            f"{', '.join(map(str, power_spectrum.steps))}"
+        )
     return replace(
         power_spectrum,
-        steps=power_spectrum.steps[indices],
-        redshifts=power_spectrum.redshifts[indices],
+        steps=_read_only(power_spectrum.steps[indices]),
+        redshifts=_read_only(power_spectrum.redshifts[indices]),
         _spectra=_read_only(power_spectrum._spectra[:, indices, :]),
     )
 

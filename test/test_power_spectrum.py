@@ -59,6 +59,20 @@ def test_parameters(hydro):
     assert hydro.parameters["grid"] == hydro.simulation["pm_grid"]
 
 
+def test_parameter_units(hydro):
+    wavenumbers = ("k_fundamental", "k_nyquist", "k_max", "bin_k_min", "bin_width")
+    h = hydro.cosmology.h
+    comoving = hydro.parameters
+    scalefree = hydro.with_units("scalefree").parameters
+    unitless = hydro.with_units("unitless").parameters
+    for name in wavenumbers:
+        assert comoving[name].unit == hydro.k.unit
+        assert scalefree[name].unit == cu.littleh / u.Mpc
+        assert np.isclose(scalefree[name].value * h, comoving[name].value)
+        assert not isinstance(unitless[name], u.Quantity)
+    assert np.all(hydro.k <= comoving["k_max"])
+
+
 def test_comoving_units(hydro):
     assert hydro.k.unit == u.Mpc**-1
     assert hydro.get_data()["cdm"].unit == u.Mpc**3
@@ -253,6 +267,14 @@ def test_unknown_component_drop(hydro):
         hydro.drop("dm")
 
 
+@pytest.mark.parametrize("args", [(), ([],)])
+def test_empty_step_selection(hydro, args):
+    with pytest.raises(ValueError, match="at least one step"):
+        hydro.with_steps(*args)
+    with pytest.raises(ValueError, match="at least one step"):
+        hydro.with_redshifts(*args)
+
+
 def test_unknown_step(hydro):
     with pytest.raises(ValueError, match="Step 1 is not in this power spectrum"):
         hydro.with_steps(1)
@@ -270,6 +292,19 @@ def test_axes_are_read_only(hydro):
             axis[0] = 0
         with pytest.raises(ValueError, match="WRITEABLE"):
             axis.flags.writeable = True
+
+
+def test_selected_axes_are_read_only(hydro):
+    for ps in (
+        hydro.with_steps(list(hydro.steps[:2])),
+        hydro.with_redshifts(list(hydro.redshifts[:2])),
+    ):
+        for name in ("steps", "redshifts"):
+            axis = getattr(ps, name)
+            with pytest.raises(ValueError, match="read-only"):
+                axis[0] = 0
+            with pytest.raises(ValueError, match="WRITEABLE"):
+                axis.flags.writeable = True
 
 
 def test_returned_values_are_read_only(hydro):

@@ -240,7 +240,7 @@ class MapParams(BaseModel):
 class PowerSpectrumParams(BaseModel):
     """
     The parameters used during measurement of the power spectra in a power
-    spectrum file. Wavenumbers are comoving and in h/Mpc.
+    spectrum file. Wavenumbers are comoving, and are stored in h/Mpc.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -299,6 +299,11 @@ DATATYPE_PARAMETERS: dict[str, dict[str, dict[str, type[BaseModel]]]] = {
     "healpix_map": {"required": {"map_params": MapParams}},
     "power_spectrum": {"required": {"power_spectrum": PowerSpectrumParams}},
 }
+
+for _field in ("k_fundamental", "k_nyquist", "k_max", "bin_k_min", "bin_width"):
+    register_units(
+        PowerSpectrumParams, _field, cu.littleh / u.Mpc, UnitConvention.SCALEFREE
+    )
 
 register_units(
     HaccSimulationParameters, "box_size", u.Mpc / cu.littleh, UnitConvention.SCALEFREE
