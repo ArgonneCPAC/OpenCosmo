@@ -8,6 +8,8 @@ import numpy as np
 import opencosmo as oc
 import pytest
 from opencosmo.column import add_mag_cols
+from opencosmo.dataset import operations as dsops
+from opencosmo.io.io import open_state
 from opencosmo.spatial.region import HealpixRegion
 
 
@@ -513,3 +515,27 @@ def test_keep_top_host_filter(core_path_475, core_path_487):
     assert_top_host_idx_correct(data, core_map)
     assert np.all(data["top_host_idx"] >= 0)
     assert_all_group_members_present(data, core_map)
+
+
+@pytest.mark.parametrize("snap", [False, True])
+def test_keep_top_host_bound_after_leaf_sort(core_path_487, snap):
+    # Lightcone sorts live on the lightcone, so sort a leaf directly to send
+    # physical-order positions through the IndexUpdate hook.
+    state = open_state(core_path_487, keep_top_host=True)
+    leaf = state.leaves[0][1]
+    region = oc.make_cone((140.5, 84.4), 0.5)
+
+    def bound_data(s):
+        bounded = dsops.bound(s, region, None, snap=snap)
+        return dsops.get_data(
+            dsops.select(bounded, ["core_tag", "top_host_idx"]), "numpy"
+        )
+
+    expected = bound_data(leaf)
+    assert len(expected["core_tag"]) > 0
+    found = bound_data(dsops.sort_by(leaf, "logsm_obs", False))
+    np.testing.assert_array_equal(
+        np.sort(found["core_tag"]), np.sort(expected["core_tag"])
+    )
+    for data in (expected, found):
+        assert np.all(data["top_host_idx"] >= 0)
