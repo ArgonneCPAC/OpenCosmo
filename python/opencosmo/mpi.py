@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import sys
+import traceback
+from contextlib import contextmanager
 from functools import cache
 from typing import TYPE_CHECKING, Any, overload
 
@@ -16,7 +19,33 @@ if TYPE_CHECKING:
 
 
 def has_mpi() -> bool:
-    return get_mpi() is not None
+    return get_comm_world() is not None
+
+
+@contextmanager
+def abort_on_error(comm: _MPI.Comm | None) -> Generator[None]:
+    """Abort the MPI job on an ordinary exception instead of hanging in a collective.
+
+    On error, print the rank, exception type, and message plus the
+    traceback to stderr, then call ``comm.Abort(1)`` so the whole job
+    stops. There is no recovery: the original exception is always
+    re-raised (in serial mode, or if ``Abort`` unexpectedly returns).
+    Wrap code inside a collective HDF5 file context so the communicator
+    is aborted before the file's ``__exit__`` runs.
+    """
+    try:
+        yield
+    except Exception as error:
+        if comm is not None:
+            print(
+                f"rank {comm.Get_rank()}: {type(error).__name__}: {error}",
+                file=sys.stderr,
+                flush=True,
+            )
+            traceback.print_exc(file=sys.stderr)
+            sys.stderr.flush()
+            comm.Abort(1)
+        raise
 
 
 @cache

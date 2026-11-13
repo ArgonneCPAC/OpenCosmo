@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import astropy.units as u
 import h5py
 import numpy as np
@@ -7,8 +11,12 @@ from astropy.coordinates import SkyCoord
 from healpy import pix2ang
 from mpi4py import MPI
 from opencosmo.analysis import reduce
+from opencosmo.collection.lightcone import stack
 from opencosmo.mpi import get_comm_world
 from pytest_mpi.parallel_assert import parallel_assert
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture
@@ -512,6 +520,76 @@ def test_diffsky_stack_with_synths(core_path_487, core_path_475, per_test_dir):
     ds = ds.filter(oc.col("logmp0") > 12)
     oc.write(per_test_dir / "diffsky.hdf5", ds)
     ds = oc.open(per_test_dir / "diffsky.hdf5", synth_cores=True)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_stacked_diffsky_write_with_missing_subtypes(
+    core_path_475: Path,
+    core_path_487: Path,
+    per_test_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Issue #388: stacking must preserve global row order across missing subtypes."""
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    lc = oc.open(core_path_475, core_path_487, synth_cores=True)
+
+    # Flatten the nested (step -> subtype) iteration order into row offsets.
+    rows: list[int] = []
+    offset = 0
+    for step_lc in lc.values():
+        for subtype, ds in step_lc.items():
+            if subtype == "cores":
+                if rank == 0:
+                    rows.append(offset)
+            elif subtype == "synth_cores":
+                rows.extend((offset, offset + len(ds) - 1))
+            offset += len(ds)
+
+    selected = lc.take_rows(np.asarray(rows, dtype=np.int64)).select("dec")
+    parallel_assert(len(selected) == (6 if rank == 0 else 4))
+
+    real_update_order = stack.update_order
+    update_order_errors: list[str] = []
+
+    def guarded_update_order(
+        data: np.ndarray, comm: MPI.Comm | None, order: np.ndarray
+    ) -> np.ndarray:
+        try:
+            return real_update_order(data, comm, order)
+        except IndexError as error:
+            update_order_errors.append(str(error))
+            # Let every rank finish writing before failing together, rather
+            # than stranding peers in collective HDF5 writes or MPI barriers.
+            return np.zeros(len(order), dtype=data.dtype)
+
+    monkeypatch.setattr(stack, "update_order", guarded_update_order)
+
+    oc.write(per_test_dir / "lightcone.hdf5", selected)
+
+    all_errors = comm.allgather(update_order_errors)
+    assert not any(all_errors), (
+        f"Issue #388: stacked lightcone write raised IndexError by rank: {all_errors}"
+    )
+
+    # Check row conservation as well as absence of exceptions.
+    original_dec = np.sort(
+        np.concatenate(
+            comm.allgather(np.asarray(selected.select("dec").get_data("numpy")))
+        )
+    )
+    dec_columns: list[np.ndarray] = []
+
+    def collect_dec(name: str, obj: h5py.Dataset | h5py.Group) -> None:
+        if isinstance(obj, h5py.Dataset) and name.endswith("/data/dec"):
+            dec_columns.append(obj[...])
+
+    with h5py.File(per_test_dir / "lightcone.hdf5") as f:
+        parallel_assert("475_cores" in f and "475_synth_cores" in f)
+        parallel_assert("475_475" not in f)
+        f.visititems(collect_dec)
+    written_dec = np.sort(np.concatenate(dec_columns))
+    parallel_assert(np.array_equal(original_dec, written_dec))
 
 
 @pytest.mark.parallel(nprocs=4)

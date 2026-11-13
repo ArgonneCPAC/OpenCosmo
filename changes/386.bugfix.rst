@@ -1,0 +1,1 @@
+Fix a bug that could cause operations with the "global" flag to fail when running on a single process.

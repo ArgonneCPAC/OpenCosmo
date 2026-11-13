@@ -12,6 +12,7 @@ from opencosmo.io.schema import FileEntry, Schema, make_schema
 from opencosmo.io.verify import schema_data_length, verify_structure
 from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter
 from opencosmo.mpi import (
+    abort_on_error,
     get_all_entries,
     get_comm_world,
     get_mpi,
@@ -81,7 +82,7 @@ class CombineState(Enum):
     INVALID = 3
 
 
-def write_parallel(file: Path, file_schema: Schema, compress: bool):
+def write_parallel(file: Path, file_schema: Schema, compress: bool) -> None:
     """
     Main entry point for writing data in parallel. Proceeds
     in three steps:
@@ -93,6 +94,13 @@ def write_parallel(file: Path, file_schema: Schema, compress: bool):
     comm = get_comm_world()
     if comm is None:
         raise ValueError("Got a null comm!")
+    with abort_on_error(comm):
+        return __do_parallel_write(file, file_schema, compress, comm)
+
+
+def __do_parallel_write(
+    file: Path, file_schema: Schema, compress: bool, comm: _MPI.Comm
+) -> None:
     MPI = get_mpi()
     assert MPI is not None
     paths = set(comm.allgather(file))
@@ -131,11 +139,13 @@ def write_parallel(file: Path, file_schema: Schema, compress: bool):
             __allocate(file_schema, f, new_comm, compress)
     else:
         __allocate(file_schema, None, new_comm, compress)
-    try:
-        with h5py.File(file, "a", driver="mpio", comm=new_comm) as f:
+    if h5py.get_config().mpi:
+        with (
+            h5py.File(file, "a", driver="mpio", comm=new_comm) as f,
+            abort_on_error(comm),
+        ):
             __write_parallel(file_schema, f, offsets, new_comm)
-
-    except ValueError:  # parallell hdf5 not available
+    else:
         schema = __replace_writers_with_updates(file_schema, new_comm)
         __write_serial(schema, file, offsets, new_comm)
     cleanup_mpi(comm, new_comm, new_group)
