@@ -21,14 +21,15 @@ from opencosmo.dataset.graph import get_all_required_pairs
 from opencosmo.dataset.instantiate import instantiate_dataset
 from opencosmo.dataset.output import get_derived_column_names, make_dataset_schema
 from opencosmo.dataset.take import (
+    check_rows_in_range,
     get_end_take_index,
     get_random_take_index,
     get_range_take_index,
+    validate_take_rows,
 )
 from opencosmo.index import (
     combine,
     empty,
-    get_range,
     into_array,
     mask,
     project,
@@ -345,16 +346,34 @@ def take_rows(
     Take ``rows`` of ``state`` and fire the ``IndexUpdate`` hooks on them. By
     default ``rows`` are positions in sorted order; with ``bypass_sort`` they are
     positions in the handler's (physical) order.
+
+    ``rows`` selects a subset: they may be given in any order but must not repeat,
+    and the result keeps the dataset's own row order. Use ``reorder`` to permute
+    or repeat rows.
     """
-    row_range = get_range(rows)
-    if row_range[0] < 0 or row_range[1] > len(state):
-        raise ValueError(
-            "Row indices must be between 0 and the length of this dataset - 1!"
-        )
+    rows = validate_take_rows(rows, len(state))
     if len(state) == 0:
         return state
     rows = fold(HookPoint.IndexUpdate, IndexUpdateCtx(state, rows, bypass_sort)).index
     return __take_rows(state, rows, bypass_sort)
+
+
+def reorder(state: DatasetState, rows: DataIndex) -> DatasetState:
+    """
+    Rows of ``state`` at positions ``rows`` (in sorted order), in the order given
+    and with repeats kept. ``IndexUpdate`` hooks do not fire, so the result stays
+    aligned with whatever produced ``rows``. A sort cannot hold an arbitrary
+    order, so it is dropped. Internal only; the public ``take_rows`` selects
+    subsets.
+    """
+    check_rows_in_range(rows, len(state))
+    if len(state) == 0:
+        return state
+    if (sorted_idx := get_sorted_index(state)) is not None:
+        rows = sorted_idx[into_array(rows)]
+    return __take_rows(
+        dataclasses.replace(state, sort_key=None), rows, bypass_sort=True
+    )
 
 
 @instrument_call(iss.serialize_take)

@@ -97,23 +97,30 @@ def __match_rows(
 
     source_rows, target_rows = __match_dataset_rows(match_set, sources, source)
 
-    # Under MPI target rows are global raw rows, serially they are local positions
-    matched = {source: __with_rows(new_datasets[source], source_rows, False)}
+    # Source rows are an ascending subset. Target rows follow the source and may
+    # be out of order or repeated. Under MPI they are global raw rows, serially
+    # they are local positions.
+    source_member = new_datasets[source]
+    matched: dict[str, DatasetState | StructureState] = {
+        source: dsops.take_rows(source_member, source_rows, log=False)
+        if isinstance(source_member, DatasetState)
+        else scops.take_rows(source_member, source_rows, log=False)
+    }
     for name, rows in target_rows.items():
-        matched[name] = __with_rows(new_datasets[name], rows, has_mpi())
+        matched[name] = __align_target(new_datasets[name], rows, has_mpi())
     return matched
 
 
-def __with_rows(
+def __align_target(
     member: DatasetState | StructureState, rows: DataIndex, redistribute: bool
 ) -> DatasetState | StructureState:
     if isinstance(member, DatasetState):
         if redistribute:
             return dsops.redistribute(member, rows)
-        return dsops.take_rows(member, rows, log=False)
+        return dsops.reorder(member, rows)
     if redistribute:
         return scops.redistribute(member, rows)
-    return scops.take_rows(member, rows, log=False)
+    return scops.reorder(member, rows)
 
 
 def __match_dataset_rows(

@@ -403,7 +403,7 @@ class SimulationCollection:
         ------
         ValueError
             If any of the indices is less than 0 or greater than the length of a
-            dataset.
+            dataset, or if any index is repeated.
         """
         return self.__with_state(simops.take_rows(self.__state, rows))
 

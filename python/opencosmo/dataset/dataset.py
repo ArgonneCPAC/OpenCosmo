@@ -731,7 +731,9 @@ class Dataset:
     def take_rows(self, rows: np.ndarray | DataIndex) -> Dataset:
         """
         Take the rows of a dataset specified by the :code:`rows` argument.
-        :code:`rows` should be an array of integers.
+        :code:`rows` should be an array of integers. They may be given in any
+        order but must not repeat. The result keeps this dataset's row order
+        (its sort order, if sorted), not the order of :code:`rows`.
 
         Parameters:
         -----------
@@ -745,7 +747,7 @@ class Dataset:
         -------
         ValueError:
             If any of the indices is less than 0 or greater than the length of the
-            dataset.
+            dataset, or if any index is repeated.
 
         """
         new_state = dsops.take_rows(self.__state, rows)

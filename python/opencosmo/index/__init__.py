@@ -12,7 +12,15 @@ from .build import (
 from .get import get_data
 from .in_range import n_in_range
 from .mask import into_array, mask
-from .ops import combine, offset, rebuild_by_ranges, reindex_column, sort, trim
+from .ops import (
+    combine,
+    offset,
+    rebuild_by_ranges,
+    reindex_column,
+    sort,
+    sort_unique,
+    trim,
+)
 from .plan import ReadPlan, build_plans, read_with_plan
 from .project import project
 from .take import take
@@ -50,6 +58,7 @@ __all__ = [
     "reindex_column",
     "single_chunk",
     "sort",
+    "sort_unique",
     "take",
     "trim",
     "zeros",

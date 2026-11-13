@@ -838,7 +838,9 @@ class Lightcone:
     def take_rows(self, rows: np.ndarray | DataIndex) -> Lightcone:
         """
         Take the rows of a lightcone specified by the :code:`rows` argument.
-        :code:`rows` should be an array of integers.
+        :code:`rows` should be an array of integers. They may be given in any
+        order but must not repeat. The result keeps this lightcone's row order
+        (its sort order, if sorted), not the order of :code:`rows`.
 
         Parameters
         ----------
@@ -853,7 +855,7 @@ class Lightcone:
         -------
         ValueError:
             If any of the indices is less than 0 or greater than the length of the
-            lightcone.
+            lightcone, or if any index is repeated.
 
         """
         return Lightcone(lcops.take_rows(self.__state, rows))

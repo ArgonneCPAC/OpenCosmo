@@ -206,9 +206,7 @@ def test_after_unordered_take_rows(halo_properties_path, tmp_path, monkeypatch):
     actual = oc.open(tmp_path / "haloproperties.hdf5").get_data()
     for name in expected.colnames:
         np.testing.assert_array_equal(actual[name], expected[name])
-    # In-memory columns are permuted along with the raw rows
-    np.testing.assert_array_equal(
-        actual["taken_position"], np.argsort(rows, kind="stable")
-    )
+    # take_rows keeps the dataset's row order, so new columns line up with it
+    np.testing.assert_array_equal(actual["taken_position"], np.arange(len(rows)))
     # Raw columns were read through plans built for the canonical index
     assert planned_reads and set(planned_reads) == {len(rows)}

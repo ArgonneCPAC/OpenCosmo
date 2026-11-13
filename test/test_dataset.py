@@ -985,3 +985,25 @@ def test_bound_after_unordered_take_rows(input_path, snap):
     rows = np.random.default_rng(0).permutation(len(state))
     _, found = __bound_tags(dsops.take_rows(state, rows), region, snap)
     np.testing.assert_array_equal(found, expected)
+
+
+def test_take_rows_keeps_dataset_order(input_path):
+    ds = oc.open(input_path)
+    tags = ds.select("fof_halo_tag").get_data("numpy")
+    rows = np.array([40, 3, 17, 0], dtype=np.int64)
+    taken = ds.take_rows(rows).select("fof_halo_tag").get_data("numpy")
+    np.testing.assert_array_equal(taken, tags[np.sort(rows)])
+
+
+def test_sorted_take_rows_keeps_sort_order(input_path):
+    ds = oc.open(input_path).sort_by("fof_halo_mass")
+    tags = ds.select("fof_halo_tag").get_data("numpy")
+    rows = np.array([40, 3, 17, 0], dtype=np.int64)
+    taken = ds.take_rows(rows).select("fof_halo_tag").get_data("numpy")
+    np.testing.assert_array_equal(taken, tags[np.sort(rows)])
+
+
+def test_take_rows_rejects_duplicates(input_path):
+    ds = oc.open(input_path)
+    with pytest.raises(ValueError, match="must not contain duplicates"):
+        ds.take_rows(np.array([3, 5, 3], dtype=np.int64))

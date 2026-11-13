@@ -5,7 +5,15 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 
 from opencosmo.dataset import operations as dsops
-from opencosmo.index import empty, from_size, into_array, single_chunk
+from opencosmo.index import (
+    empty,
+    from_size,
+    get_length,
+    get_range,
+    into_array,
+    single_chunk,
+    sort_unique,
+)
 from opencosmo.mpi import get_comm_world, get_mpi, has_mpi
 
 if TYPE_CHECKING:
@@ -14,6 +22,30 @@ if TYPE_CHECKING:
     from opencosmo.collection.lightcone.state import LightconeState
     from opencosmo.dataset.state import DatasetState
     from opencosmo.index import DataIndex, IndexArray
+
+
+def check_rows_in_range(rows: DataIndex, length: int) -> None:
+    if get_length(rows) == 0:
+        return
+    low, high = get_range(rows)
+    if isinstance(rows, np.ndarray):
+        high += 1  # simple ranges are inclusive, chunked ranges are not
+    if low < 0 or high > length:
+        raise ValueError(
+            "Row indices must be between 0 and the length of this dataset - 1!"
+        )
+
+
+def validate_take_rows(rows: DataIndex, length: int) -> DataIndex:
+    """
+    ``rows`` in ascending order, after checking that every row is in
+    ``[0, length)`` and that no row is repeated.
+    """
+    check_rows_in_range(rows, length)
+    ordered = sort_unique(rows)
+    if ordered is None:
+        raise ValueError("Row indices must not contain duplicates!")
+    return ordered
 
 
 def get_random_take_index(

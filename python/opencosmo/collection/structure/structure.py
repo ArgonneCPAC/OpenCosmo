@@ -912,8 +912,10 @@ class StructureCollection:
 
     def take_rows(self, rows: np.ndarray | DataIndex) -> StructureCollection:
         """
-        Take the rows of this collection  specified by the :code:`rows` argument.
-        :code:`rows` should be an array of integers.
+        Take the rows of this collection specified by the :code:`rows` argument.
+        :code:`rows` should be an array of integers. They may be given in any
+        order but must not repeat. The result keeps this collection's row order
+        (its sort order, if sorted), not the order of :code:`rows`.
 
         Parameters:
         -----------
@@ -927,7 +929,7 @@ class StructureCollection:
         -------
         ValueError:
             If any of the indices is less than 0 or greater than the length of the
-            dataset.
+            dataset, or if any index is repeated.
 
         """
         return self.__with_state(scops.take_rows(self.__state, rows))

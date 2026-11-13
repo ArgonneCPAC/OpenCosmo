@@ -977,3 +977,19 @@ def test_lc_scope_nested_lightcone(diffsky_core_path):
     raw = np.asarray(data["logsm_obs"])
     expected = raw - np.mean(raw)
     assert np.allclose(np.sort(centered), np.sort(expected), rtol=1e-6)
+
+
+def test_lc_take_rows_unordered(haloproperties_600_path, haloproperties_601_path):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    tags = ds.select("fof_halo_tag").get_data("numpy")
+    rows = np.array([len(ds) - 1, 0, 5], dtype=np.int64)
+    taken = ds.take_rows(rows).select("fof_halo_tag").get_data("numpy")
+    np.testing.assert_array_equal(taken, tags[np.sort(rows)])
+
+
+def test_lc_take_rows_rejects_duplicates(
+    haloproperties_600_path, haloproperties_601_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    with pytest.raises(ValueError, match="must not contain duplicates"):
+        ds.take_rows(np.array([3, 3, 5], dtype=np.int64))

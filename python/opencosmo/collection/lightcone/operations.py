@@ -44,8 +44,9 @@ from opencosmo.dataset.take import (
     get_random_take_index,
     get_range_take_index,
     get_rows_take_index,
+    validate_take_rows,
 )
-from opencosmo.index import empty, get_range, into_array, rebuild_by_ranges
+from opencosmo.index import empty, into_array, rebuild_by_ranges
 from opencosmo.io import iopen, specs
 from opencosmo.io.index_spec import index_spec_for
 from opencosmo.io.schema import FileEntry
@@ -581,11 +582,37 @@ def take_range(
 
 
 def take_rows(state: LightconeState, rows: DataIndex) -> LightconeState:
-    index_range = get_range(rows)
-    if index_range[0] < 0 or index_range[1] > len(state):
-        raise ValueError("Rows must be between 0 and the length of this dataset - 1")
+    """
+    Take a subset of rows. ``rows`` may be in any order but must not repeat; the
+    result keeps the lightcone's own row order.
+    """
+    rows = validate_take_rows(rows, len(state))
     rows = get_rows_take_index(state, rows, state.sort_key)
     return take_rows_unsorted(state, rows)
+
+
+def reorder_leaves(
+    state: LightconeState, per_leaf: Mapping[LeafKey, DataIndex]
+) -> LightconeState:
+    """
+    Reorder each leaf by its rows in ``per_leaf`` (positions in the leaf's
+    current order), kept in the order given and with repeats. Leaves missing
+    from ``per_leaf`` become empty. ``IndexUpdate`` hooks do not fire, and the
+    lightcone sort is dropped because it cannot hold an arbitrary order.
+    Internal only.
+    """
+    leaves = tuple(
+        (key, dsops.reorder(leaf, per_leaf.get(key, empty())))
+        for key, leaf in state.leaves
+    )
+    return lcst.from_leaves(
+        __prune_empty(leaves, keep_all_empty=False),
+        state.maps,
+        state.z_range,
+        state.hidden,
+        None,
+        state.scope,
+    )
 
 
 def get_sort_index(state: LightconeState) -> np.ndarray | None:
@@ -606,9 +633,11 @@ def get_sort_index(state: LightconeState) -> np.ndarray | None:
 
 def take_rows_unsorted(state: LightconeState, rows: DataIndex) -> LightconeState:
     """
-    Take rows by physical (stacked, unsorted) position. ``rows`` is assumed to be
-    sorted and in range.
+    Take rows by physical (stacked, unsorted) position. ``rows`` must be
+    ascending and in range.
     """
+    if not __is_ascending(rows):
+        raise RuntimeError("Lightcone rows must be in ascending order")
     sizes = np.fromiter((len(leaf) for _, leaf in state.leaves), dtype=np.int64)
     starts = np.zeros_like(sizes)
     starts[1:] = np.cumsum(sizes)[:-1]
@@ -709,6 +738,14 @@ def __map_leaves(
 ) -> LightconeState:
     leaves = tuple((key, fn(leaf)) for key, leaf in state.leaves)
     return __with_leaves(state, __prune_empty(leaves), maps=maps)
+
+
+def __is_ascending(rows: DataIndex) -> bool:
+    if isinstance(rows, np.ndarray):
+        return bool(np.all(rows[1:] > rows[:-1]))
+    nonempty = rows[1] > 0
+    starts, sizes = rows[0][nonempty], rows[1][nonempty]
+    return bool(np.all(starts[1:] >= starts[:-1] + sizes[:-1]))
 
 
 def __with_leaves(
