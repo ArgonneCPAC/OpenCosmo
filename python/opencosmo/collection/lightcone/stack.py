@@ -180,8 +180,9 @@ def stack_lightcone_datasets_in_schema(
         return {dataset_name: schema}
 
     schema_children = {}
-    for ds_group, ds_list in get_all_entries(datasets, get_comm_world(), lambda _: []):
-        schema_name = ds_group if len(datasets) > 1 else name
+    dataset_groups = list(get_all_entries(datasets, get_comm_world(), lambda _: []))
+    for ds_group, ds_list in dataset_groups:
+        schema_name = ds_group if len(dataset_groups) > 1 else name
         ds_list = [dataset for dataset in ds_list if len(dataset) > 0]
         if len(ds_list) == 0:
             if no_stack:

@@ -1,0 +1,1 @@
+Individual rank crashes during MPI writes now cause a collective abort rather than hanging.
