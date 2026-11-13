@@ -94,35 +94,52 @@ def write_parallel(file: Path, file_schema: Schema, compress: bool) -> None:
     comm = get_comm_world()
     if comm is None:
         raise ValueError("Got a null comm!")
+    has_data = __validate_parallel_write(file, file_schema, comm)
     with abort_on_error(comm):
-        return __do_parallel_write(file, file_schema, compress, comm)
+        return __do_parallel_write(file, file_schema, compress, comm, has_data)
 
 
-def __do_parallel_write(
-    file: Path, file_schema: Schema, compress: bool, comm: _MPI.Comm
-) -> None:
-    MPI = get_mpi()
-    assert MPI is not None
-    paths = set(comm.allgather(file))
+def __validate_parallel_write(
+    file: Path, file_schema: Schema, comm: _MPI.Comm
+) -> list[int]:
+    with abort_on_error(comm):
+        paths = set(comm.allgather(file))
     if len(paths) != 1:
         raise ValueError("Different ranks recieved a different path to output to!")
 
-    if schema_data_length(file_schema) == 0:
-        results = comm.allgather(CombineState.ZERO_LENGTH)
-    else:
-        try:
-            verify_structure(file_schema)  # Tier 1: structural correctness
-            # Tier 2: does this rank actually contribute any rows?
-            results = comm.allgather(CombineState.VALID)
-        except ValueError:
-            results = comm.allgather(CombineState.INVALID)
-            raise
+    validation_error: ValueError | None = None
+    with abort_on_error(comm):
+        if schema_data_length(file_schema) == 0:
+            state = CombineState.ZERO_LENGTH
+        else:
+            try:
+                verify_structure(file_schema)
+                state = CombineState.VALID
+            except ValueError as error:
+                validation_error = error
+                state = CombineState.INVALID
+        results = comm.allgather(state)
+
+    # These failures are known to every rank and can safely propagate normally.
     if any(rs == CombineState.INVALID for rs in results):
+        if validation_error is not None:
+            raise validation_error
         raise ValueError("One or more ranks recieved invalid schemas!")
     has_data = [i for i, state in enumerate(results) if state == CombineState.VALID]
     if len(has_data) == 0:
         raise ValueError("No ranks have any data to write!")
+    return has_data
 
+
+def __do_parallel_write(
+    file: Path,
+    file_schema: Schema,
+    compress: bool,
+    comm: _MPI.Comm,
+    has_data: list[int],
+) -> None:
+    MPI = get_mpi()
+    assert MPI is not None
     group = comm.Get_group()
     new_group = group.Incl(has_data)
     new_comm = comm.Create(new_group)

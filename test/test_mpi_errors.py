@@ -155,9 +155,88 @@ def test_write_parallel_aborts_preparation_errors_on_full_comm(
     with pytest.raises(RuntimeError, match="simulated MPI abort"):
         io_mpi.write_parallel(path, schema, False)
 
-    prepare.assert_called_once_with(path, schema, False, comm)
+    prepare.assert_called_once_with(path, schema, False, comm, [0])
     comm.Abort.assert_called_once_with(1)
     comm.Create.return_value.Abort.assert_not_called()
+
+
+def test_empty_write_raises_without_aborting(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    write_environment: tuple[Mock, Mock, Schema, list[str]],
+) -> None:
+    comm, hdf5, schema, _ = write_environment
+    monkeypatch.setattr(io_mpi, "schema_data_length", Mock(return_value=0))
+
+    with pytest.raises(ValueError, match="No ranks have any data"):
+        io_mpi.write_parallel(tmp_path / "empty.hdf5", schema, False)
+
+    comm.Abort.assert_not_called()
+    comm.Create.assert_not_called()
+    hdf5.File.assert_not_called()
+
+
+@pytest.mark.parametrize("local_invalid", [True, False])
+def test_invalid_schema_raises_without_aborting(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    write_environment: tuple[Mock, Mock, Schema, list[str]],
+    local_invalid: bool,
+) -> None:
+    comm, hdf5, schema, _ = write_environment
+    error = ValueError("invalid local schema")
+    if local_invalid:
+        monkeypatch.setattr(io_mpi, "verify_structure", Mock(side_effect=error))
+    else:
+        comm.allgather.side_effect = [
+            [tmp_path / "out.hdf5"] * 2,
+            [io_mpi.CombineState.VALID, io_mpi.CombineState.INVALID],
+        ]
+    message = "invalid local schema" if local_invalid else "invalid schemas"
+
+    with pytest.raises(ValueError, match=message) as excinfo:
+        io_mpi.write_parallel(tmp_path / "out.hdf5", schema, False)
+
+    if local_invalid:
+        assert excinfo.value is error
+    comm.Abort.assert_not_called()
+    comm.Create.assert_not_called()
+    hdf5.File.assert_not_called()
+
+
+def test_inconsistent_paths_raise_without_aborting(
+    tmp_path: Path,
+    write_environment: tuple[Mock, Mock, Schema, list[str]],
+) -> None:
+    comm, hdf5, schema, _ = write_environment
+    comm.allgather.return_value = [tmp_path / "a.hdf5", tmp_path / "b.hdf5"]
+    comm.allgather.side_effect = None
+
+    with pytest.raises(ValueError, match="Different ranks recieved a different path"):
+        io_mpi.write_parallel(tmp_path / "a.hdf5", schema, False)
+
+    comm.Abort.assert_not_called()
+    comm.Create.assert_not_called()
+    hdf5.File.assert_not_called()
+
+
+def test_unexpected_validation_error_still_aborts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    write_environment: tuple[Mock, Mock, Schema, list[str]],
+) -> None:
+    comm, hdf5, schema, _ = write_environment
+    comm.Abort.side_effect = RuntimeError("simulated MPI abort")
+    monkeypatch.setattr(
+        io_mpi, "verify_structure", Mock(side_effect=RuntimeError("unexpected failure"))
+    )
+
+    with pytest.raises(RuntimeError, match="simulated MPI abort"):
+        io_mpi.write_parallel(tmp_path / "out.hdf5", schema, False)
+
+    comm.Abort.assert_called_once_with(1)
+    comm.Create.assert_not_called()
+    hdf5.File.assert_not_called()
 
 
 def test_parallel_hdf5_write_uses_data_comm(
@@ -205,7 +284,7 @@ def test_write_error_aborts_before_file_close_without_serial_fallback(
     # Exercise the inner guard independently: a real Abort never returns,
     # whereas the simulated abort raises and would reach the outer guard too.
     with pytest.raises(RuntimeError, match="simulated MPI abort"):
-        io_mpi.__do_parallel_write(tmp_path / "out.hdf5", schema, False, comm)
+        io_mpi.__do_parallel_write(tmp_path / "out.hdf5", schema, False, comm, [0])
 
     assert events == ["open", "close", "open", "abort", "close"]
     comm.Abort.assert_called_once_with(1)
