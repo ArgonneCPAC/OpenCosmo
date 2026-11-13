@@ -142,6 +142,16 @@ def take_rows(
     return __with_source_rows(state, new_source)
 
 
+def reorder(state: StructureState, rows: DataIndex) -> StructureState:
+    """
+    Reorder the dataset source by ``rows``, kept in the order given and with
+    repeats. ``IndexUpdate`` hooks do not fire. Internal only.
+    """
+    if not isinstance(state.source, DatasetState):
+        raise TypeError("Reordering is not available for lightcone sources")
+    return __with_source_rows(state, dsops.reorder(state.source, rows))
+
+
 def redistribute(state: StructureState, rows: DataIndex) -> StructureState:
     """MPI: move the source to the global raw ``rows``, bringing its children."""
     if not isinstance(state.source, DatasetState):

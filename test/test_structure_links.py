@@ -82,17 +82,3 @@ def test_take_per_leaf_nested_collection(halo_paths, galaxy_paths):
     assert isinstance(taken, scst.StructureState)
     assert len(taken) == 3
     assert len(oc.StructureCollection(taken)) == 3
-
-
-def test_stacked_index_offsets_lightcone_leaves(plain_lightcone):
-    n_600 = len(lcst.view(plain_lightcone, 600))
-    index = links.stacked_index(
-        plain_lightcone, {(600,): np.array([0, 1]), (601,): np.array([0])}
-    )
-    assert np.array_equal(index, [0, 1, n_600])
-
-
-def test_stacked_index_skips_absent_leaves(plain_lightcone):
-    n_600 = len(lcst.view(plain_lightcone, 600))
-    index = links.stacked_index(plain_lightcone, {(601,): np.array([1, 2])})
-    assert np.array_equal(index, [n_600 + 1, n_600 + 2])

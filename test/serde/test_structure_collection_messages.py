@@ -77,7 +77,7 @@ PAYLOADS = [
     {"kind": "sort_by", "column": "tag", "invert": True},
     {"kind": "take", "n": 2, "at": "end", "mode": "global"},
     {"kind": "take_range", "start": 1, "end": 3, "mode": "global"},
-    {"kind": "take_rows", "rows": [2, 0, 2]},
+    {"kind": "take_rows", "rows": [2, 0, 4]},
     {"kind": "bound", "region": BOX, "select_by": "galaxies"},
     {
         "kind": "with_new_columns",

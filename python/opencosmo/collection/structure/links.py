@@ -18,7 +18,7 @@ from opencosmo.collection.lightcone import state as lcst
 from opencosmo.collection.structure import state as scst
 from opencosmo.dataset import operations as dsops
 from opencosmo.dataset.state import DatasetState
-from opencosmo.index import coalesce_chunks, empty, into_array, offset
+from opencosmo.index import coalesce_chunks, into_array
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.io.writer import ColumnWriter
 from opencosmo.mapping.mapping import (
@@ -170,17 +170,17 @@ def resort_index(
 
 def take_per_leaf(target: LinkTarget, per_leaf: PerLeaf) -> LinkTarget:
     """
-    Apply per-leaf indices to a target aligned with the source's leaves. A
-    lightcone target keeps exactly the steps present in ``per_leaf``.
+    Apply per-leaf indices to a target aligned with the source's leaves. Rows
+    keep the order given, so they may permute the target. A lightcone target
+    keeps exactly the steps present in ``per_leaf``.
     """
     if isinstance(target, DatasetState):
-        return dsops.take_rows(target, per_leaf[()])
+        return dsops.reorder(target, per_leaf[()])
     if isinstance(target, scst.StructureState):
-        rows = stacked_index(target.source, per_leaf)
         if isinstance(target.source, DatasetState):
-            new_source: Source = dsops.take_rows(target.source, rows)
+            new_source: Source = dsops.reorder(target.source, per_leaf[()])
         else:
-            new_source = lcops.take_rows(target.source, rows)
+            new_source = lcops.reorder_leaves(target.source, per_leaf)
         linked_source = target.linked_source
         if linked_source is None:
             linked_source = target.source
@@ -191,27 +191,12 @@ def take_per_leaf(target: LinkTarget, per_leaf: PerLeaf) -> LinkTarget:
     if missing:
         raise RuntimeError(f"Linked lightcone is missing steps {sorted(missing)}")
     leaves = tuple(
-        (key, dsops.take_rows(target_leaves[key], index))
+        (key, dsops.reorder(target_leaves[key], index))
         for key, index in per_leaf.items()
     )
     return lcst.from_leaves(
         leaves, target.maps, None, target.hidden, target.sort_key, target.scope
     )
-
-
-def stacked_index(source: Source, per_leaf: PerLeaf) -> DataIndex:
-    """Offset per-leaf indices into ``source``'s stacked row space."""
-    if isinstance(source, DatasetState):
-        return per_leaf.get((), empty())
-    pieces: list[np.ndarray] = []
-    running = 0
-    for key, leaf in source.leaves:
-        if (index := per_leaf.get(key)) is not None:
-            pieces.append(into_array(offset(index, running)))
-        running += len(leaf)
-    if not pieces:
-        return np.array([], dtype=np.int64)
-    return np.concatenate(pieces)
 
 
 def resolve(

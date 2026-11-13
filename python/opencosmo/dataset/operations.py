@@ -21,14 +21,15 @@ from opencosmo.dataset.graph import get_all_required_pairs
 from opencosmo.dataset.instantiate import instantiate_dataset
 from opencosmo.dataset.output import get_derived_column_names, make_dataset_schema
 from opencosmo.dataset.take import (
+    check_rows_in_range,
     get_end_take_index,
     get_random_take_index,
     get_range_take_index,
+    validate_take_rows,
 )
 from opencosmo.index import (
     combine,
     empty,
-    get_range,
     into_array,
     mask,
     project,
@@ -72,6 +73,7 @@ def get_data(
     format: str,
     unpack: bool = False,
     wrap_single: bool = False,
+    ignore_sort: bool = False,
     **kwargs,
 ):
     verify_format(format)
@@ -86,6 +88,7 @@ def get_data(
 
     data = __get_data(
         state,
+        ignore_sort=ignore_sort,
         unit_kwargs=unit_kwargs,
         **kwargs,
     )  # dict
@@ -119,8 +122,7 @@ def filter(
     for m in masks:
         bool_mask &= m.apply(data)
 
-    new_state = __take_rows(state, np.where(bool_mask)[0])
-    return new_state
+    return take_rows(state, np.where(bool_mask)[0], log=False)
 
 
 @instrument_call(iss.serialize_select)
@@ -333,18 +335,45 @@ def take_range(
         raise ValueError("end must be greater than start.")
 
     take_index = get_range_take_index(state, state.sort_key, start, end - start, mode)
-    return __take_rows(state, take_index)
+    return take_rows(state, take_index, log=False)
 
 
-@instrument_call(iss.serialize_take_rows)
-def take_rows(state: DatasetState, rows: DataIndex) -> DatasetState:
-    row_range = get_range(rows)
-    if row_range[0] < 0 or row_range[1] > len(state):
-        raise ValueError(
-            "Row indices must be between 0 and the length of this dataset - 1!"
-        )
+@instrument_call(iss.serialize_take_rows, drop="bypass_sort")
+def take_rows(
+    state: DatasetState, rows: DataIndex, bypass_sort: bool = False
+) -> DatasetState:
+    """
+    Take ``rows`` of ``state`` and fire the ``IndexUpdate`` hooks on them. By
+    default ``rows`` are positions in sorted order; with ``bypass_sort`` they are
+    positions in the handler's (physical) order.
 
-    return __take_rows(state, rows)
+    ``rows`` selects a subset: they may be given in any order but must not repeat,
+    and the result keeps the dataset's own row order. Use ``reorder`` to permute
+    or repeat rows.
+    """
+    rows = validate_take_rows(rows, len(state))
+    if len(state) == 0:
+        return state
+    rows = fold(HookPoint.IndexUpdate, IndexUpdateCtx(state, rows, bypass_sort)).index
+    return __take_rows(state, rows, bypass_sort)
+
+
+def reorder(state: DatasetState, rows: DataIndex) -> DatasetState:
+    """
+    Rows of ``state`` at positions ``rows`` (in sorted order), in the order given
+    and with repeats kept. ``IndexUpdate`` hooks do not fire, so the result stays
+    aligned with whatever produced ``rows``. A sort cannot hold an arbitrary
+    order, so it is dropped. Internal only; the public ``take_rows`` selects
+    subsets.
+    """
+    check_rows_in_range(rows, len(state))
+    if len(state) == 0:
+        return state
+    if (sorted_idx := get_sorted_index(state)) is not None:
+        rows = sorted_idx[into_array(rows)]
+    return __take_rows(
+        dataclasses.replace(state, sort_key=None), rows, bypass_sort=True
+    )
 
 
 @instrument_call(iss.serialize_take)
@@ -434,7 +463,7 @@ def bound(state: DatasetState, region, select_by, snap: bool = False):
     if state.region is None:
         raise RuntimeError("A spatially indexed dataset must have a region")
     if not state.region.intersects(check_region):
-        return __take_rows(state, empty())
+        return __take_rows(state, empty(), bypass_sort=True)
 
     if not state.region.contains(check_region):
         warn(
@@ -447,13 +476,19 @@ def bound(state: DatasetState, region, select_by, snap: bool = False):
     contained_index, intersects_index = state.spatial_index.query(check_region)
     if snap:
         new_index = combine(contained_index, intersects_index)
-        new_index = project(state.raw_index, new_index)
-        new_state = __take_rows(state, new_index)
+        new_index = project(state.physical_index, new_index)
+        new_state = take_rows(state, new_index, bypass_sort=True, log=False)
         return dataclasses.replace(new_state, region=check_region)
 
-    contained_index = project(state.raw_index, contained_index)
-    intersects_index = project(state.raw_index, intersects_index)
-    check_state = __take_rows(state, intersects_index)
+    # Positions are physical (handler order), so the sort is bypassed throughout
+    # and cleared on check_state so the containment mask is in the same order.
+    # IndexUpdate hooks fire only on the final selection, so check_state has
+    # exactly the rows of intersects_index.
+    contained_index = project(state.physical_index, contained_index)
+    intersects_index = project(state.physical_index, intersects_index)
+    check_state = dataclasses.replace(
+        __take_rows(state, intersects_index, bypass_sort=True), sort_key=None
+    )
     if not state.header.file.is_lightcone:
         check_state = with_units(check_state, "scalefree", {})
 
@@ -469,7 +504,7 @@ def bound(state: DatasetState, region, select_by, snap: bool = False):
         np.concatenate([into_array(contained_index), into_array(new_intersects_index)])
     )
 
-    new_state = __take_rows(state, new_index)
+    new_state = take_rows(state, new_index, bypass_sort=True, log=False)
     return dataclasses.replace(new_state, region=check_region)
 
 
@@ -726,11 +761,16 @@ def get_sorted_index(state: DatasetState) -> np.ndarray | None:
     return sorted_idx[::-1] if state.sort_key[1] else sorted_idx
 
 
-def __take_rows(state: DatasetState, rows: DataIndex) -> DatasetState:
+def __take_rows(
+    state: DatasetState, rows: DataIndex, bypass_sort: bool = False
+) -> DatasetState:
+    """
+    Apply ``rows`` to the handler and cache without firing ``IndexUpdate`` hooks.
+    See ``take_rows`` for ``bypass_sort``.
+    """
     if len(state) == 0:
         return state
-    rows = fold(HookPoint.IndexUpdate, IndexUpdateCtx(state, rows)).index
-    if (sorted_idx := get_sorted_index(state)) is not None:
+    if not bypass_sort and (sorted_idx := get_sorted_index(state)) is not None:
         rows = np.sort(sorted_idx[into_array(rows)])
     return dataclasses.replace(
         state,

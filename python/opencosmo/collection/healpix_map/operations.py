@@ -60,9 +60,6 @@ def take_range(state: HealpixMapState, start: int, end: int) -> HealpixMapState:
 
 
 def take_rows(state: HealpixMapState, rows: np.ndarray) -> HealpixMapState:
-    rows = np.sort(rows)
-    if rows[-1] >= len(state) or rows[0] < 0:
-        raise ValueError("Rows must be between 0 and the length of this dataset - 1")
     return __with_dataset(state, dsops.take_rows(state.dataset, rows))
 
 

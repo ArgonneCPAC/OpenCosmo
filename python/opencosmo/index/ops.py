@@ -24,6 +24,26 @@ def rebuild_by_ranges(index: DataIndex, ranges: ChunkedIndex):
             return idxlib.rebuild_chunked_by_ranges(*index, *ranges)
 
 
+def sort_unique(index: DataIndex) -> DataIndex | None:
+    """``index`` in ascending order, or ``None`` if it selects any row more than once."""
+    match index:
+        case np.ndarray():
+            if len(index) < 2 or np.all(index[1:] > index[:-1]):
+                return index
+            ordered = np.sort(index)
+            return None if np.any(ordered[1:] == ordered[:-1]) else ordered
+        case (np.ndarray(), np.ndarray()):
+            nonempty = index[1] > 0
+            starts, sizes = index[0][nonempty], index[1][nonempty]
+            order = np.argsort(starts, kind="stable")
+            starts, sizes = starts[order], sizes[order]
+            if np.any(starts[1:] < starts[:-1] + sizes[:-1]):
+                return None
+            return (starts, sizes)
+        case _:
+            raise TypeError(f"Invalid index type {type(index)}")
+
+
 def trim(index: DataIndex, max: int):
     if isinstance(index, np.ndarray):
         return index[index < max]

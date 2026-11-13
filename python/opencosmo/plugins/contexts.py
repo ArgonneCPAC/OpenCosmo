@@ -82,10 +82,15 @@ class IndexUpdateCtx:
     state is read-only context for the predicate and for reading column data.
     index is the value being transformed; return a modified copy via
     dataclasses.replace(ctx, index=new_index).
+
+    When ignore_sort is False, index holds positions in the state's sorted
+    order. When True, it holds positions in physical (handler) order, and hooks
+    must read column data with the sort ignored.
     """
 
     state: DatasetState
     index: DataIndex
+    ignore_sort: bool = False
 
 
 @dataclass(frozen=True)

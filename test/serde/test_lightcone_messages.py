@@ -125,7 +125,7 @@ PAYLOADS = [
     {"kind": "sort_by", "column": None},
     {"kind": "take", "n": 3, "at": "end", "mode": "global"},
     {"kind": "take_range", "start": 1, "end": 4, "mode": "global"},
-    {"kind": "take_rows", "rows": [2, 0, 2]},
+    {"kind": "take_rows", "rows": [2, 0, 4]},
     {"kind": "bound", "region": CONE, "select_by": "redshift"},
     {
         "kind": "with_new_columns",

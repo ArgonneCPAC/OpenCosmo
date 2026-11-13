@@ -606,7 +606,7 @@ class HealpixMap:
         -------
         ValueError:
             If any of the indices is less than 0 or greater than the length of the
-            map.
+            map, or if any index is repeated.
 
         """
         return HealpixMap(mapops.take_rows(self.__state, rows))

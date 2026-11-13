@@ -63,10 +63,15 @@ def rebuild_top_host_idx(top_host_idx, index):
     return {"top_host_idx": result}
 
 
-def keep_top_host_idx(dataset: DatasetState, new_index: DataIndex):
+def keep_top_host_idx(
+    dataset: DatasetState, new_index: DataIndex, ignore_sort: bool = False
+):
     index_array = into_array(new_index)
     top_host_idx = dsops.get_data(
-        dsops.select(dataset, "top_host_idx", log=False), "numpy", wrap_single=True
+        dsops.select(dataset, "top_host_idx", log=False),
+        "numpy",
+        wrap_single=True,
+        ignore_sort=ignore_sort,
     )["top_host_idx"]
     unique_in_sample = np.unique(top_host_idx[index_array])
 
@@ -149,7 +154,9 @@ def _offset_top_host_idx(ctx: LightconeInstantiateCtx) -> LightconeInstantiateCt
     ),
 )
 def _keep(ctx: IndexUpdateCtx) -> IndexUpdateCtx:
-    return dataclasses.replace(ctx, index=keep_top_host_idx(ctx.state, ctx.index))
+    return dataclasses.replace(
+        ctx, index=keep_top_host_idx(ctx.state, ctx.index, ctx.ignore_sort)
+    )
 
 
 @hook(

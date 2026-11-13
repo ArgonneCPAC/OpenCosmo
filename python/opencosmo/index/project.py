@@ -13,6 +13,11 @@ if TYPE_CHECKING:
 
 
 def project(source: DataIndex, other: DataIndex) -> DataIndex:
+    """
+    Positions in ``source`` of the rows it shares with ``other``. ``source`` may be
+    in any order; ``other`` must be ascending and non-overlapping, as returned
+    by spatial index queries.
+    """
     match (source, other):
         case (tuple(), np.ndarray()):
             return __project_simple_on_chunked(source, other)
@@ -34,9 +39,14 @@ def __project_simple_on_simple(source: SimpleIndex, other: SimpleIndex) -> Simpl
 def __project_chunked_on_simple(
     source: SimpleIndex, other: ChunkedIndex
 ) -> SimpleIndex:
-    if len(other[0]) == 0:
+    if len(other[0]) == 0 or len(source) == 0:
         return np.array([], dtype=np.int64)
-    return idxlib.project_chunked_on_simple(source, *other)
+    if np.all(source[:-1] <= source[1:]):
+        return idxlib.project_chunked_on_simple(source, *other)
+    # The kernel requires an ascending source, so project in sorted order and map back.
+    order = np.argsort(source, kind="stable")
+    hits = idxlib.project_chunked_on_simple(source[order], *other)
+    return np.sort(order[hits])
 
 
 def __project_simple_on_chunked(source: ChunkedIndex, other: SimpleIndex) -> DataIndex:
@@ -45,7 +55,11 @@ def __project_simple_on_chunked(source: ChunkedIndex, other: SimpleIndex) -> Dat
 
 def __project_chunked_on_chunked(
     source: ChunkedIndex, other: ChunkedIndex
-) -> ChunkedIndex:
+) -> DataIndex:
+    if np.any(source[0][1:] < source[0][:-1]):
+        # Output below is grouped by chunk of ``other``, which is only source order
+        # when the source chunks are ascending.
+        return project(into_array(source), other)
     source_ends = source[0] + source[1]
     other_ends = other[0] + other[1]
 
