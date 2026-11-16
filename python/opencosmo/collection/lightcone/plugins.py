@@ -59,6 +59,8 @@ def _ensure_redshift_column(ctx: LightconeOpenCtx) -> LightconeOpenCtx:
         return ctx
     elif "fof_halo_center_a" in state.columns:
         z_col = 1 / oc.col("fof_halo_center_a") - 1
+    elif "gal_center_a" in state.columns:
+        z_col = 1 / oc.col("gal_center_a") - 1
     elif "redshift_true" in state.columns:
         z_col = oc.col("redshift_true")
     elif "zp" in state.columns:
@@ -112,11 +114,6 @@ def redshift_from_chi(chi: u.Quantity, cosmology):
     distance = chi.to(u.Mpc, cu.with_H0(cosmology.H0))
 
     if len(distance) == 0:
-        # astropy's z_at_value (used by the redshift-distance equivalency below)
-        # opens an np.nditer over the input, which raises "Iteration of
-        # zero-sized operands is not enabled" on empty input. Surplus MPI ranks
-        # hold zero-length datasets, so short-circuit with an empty result of the
-        # right unit rather than invoking the solver.
         return {"redshift": distance.value * cu.redshift}
 
     z_max = distance.max().to(

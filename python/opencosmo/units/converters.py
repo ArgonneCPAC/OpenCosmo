@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 type Converter = Callable[..., u.Quantity]
 type Transitions = dict[UnitConvention, Converter]
 
-KNOWN_SCALEFACTOR_COLUMNS = {"fof_halo_center_a"}
+KNOWN_SCALEFACTOR_COLUMNS = {"fof_halo_center_a", "gal_center_a"}
 KNOWN_REDSHIFT_COLUMNS = {"redshift", "redshift_true"}
 
 
