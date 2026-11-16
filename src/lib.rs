@@ -6,6 +6,7 @@
 use pyo3::prelude::*;
 
 mod arrays;
+mod cosmology;
 mod graph;
 mod index;
 mod plan;
@@ -25,4 +26,7 @@ mod _lib {
 
     #[pymodule_export]
     use crate::graph::graph;
+
+    #[pymodule_export]
+    use crate::cosmology::cosmology;
 }

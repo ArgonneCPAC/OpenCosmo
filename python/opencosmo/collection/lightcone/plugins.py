@@ -9,6 +9,7 @@ import astropy.units as u
 import numpy as np
 
 import opencosmo as oc
+from opencosmo._lib import cosmology as cosmolib
 from opencosmo.collection.lightcone import operations as lcops
 from opencosmo.collection.lightcone import state as lcst
 from opencosmo.column import norm_cols
@@ -116,13 +117,18 @@ def redshift_from_chi(chi: u.Quantity, cosmology):
     if len(distance) == 0:
         return {"redshift": distance.value * cu.redshift}
 
-    z_max = distance.max().to(
-        cu.redshift, cu.redshift_distance(cosmology, kind="comoving")
-    )
-    z_min = distance.min().to(
-        cu.redshift, cu.redshift_distance(cosmology, kind="comoving")
-    )
-    z_grid = np.linspace(z_min.value, z_max.value, 4096)
-    chi_grid = cosmology.comoving_distance(z_grid).to(u.Mpc)
-    z = np.interp(distance.to_value(u.Mpc), chi_grid.to_value(u.Mpc), z_grid)
+    cosmology_pars = {
+        "h": cosmology.h,
+        "Om0": cosmology.Om0,
+        "Ode0": cosmology.Ode0,
+        "Ok0": cosmology.Ok0,
+        "Or0": cosmology.Ogamma0 + cosmology.Onu0,
+        "w0": getattr(cosmology, "w0", -1.0),
+        "wa": getattr(cosmology, "wa", 0.0),
+    }
+    cosmology_ = cosmolib.make_cosmology(**cosmology_pars)
+    z_min = cosmology_.redshift_at_distance(distance.min().to_value(u.Mpc))
+    z_max = cosmology_.redshift_at_distance(distance.max().to_value(u.Mpc))
+    z_grid, chi_grid = cosmology_.comoving_distance_grid(z_min, z_max, 4096)
+    z = np.interp(distance.to_value(u.Mpc), chi_grid, z_grid)
     return {"redshift": z * cu.redshift}
