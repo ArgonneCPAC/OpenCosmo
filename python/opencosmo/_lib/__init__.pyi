@@ -1,3 +1,4 @@
+from . import cosmology as cosmology
 from . import graph as graph
 from . import index as index
 from . import plan as plan

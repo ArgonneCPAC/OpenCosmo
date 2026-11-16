@@ -1,0 +1,1 @@
+`_ensure_redshift_column` now delegates to a custom kernel to avoid a scipy dependency.

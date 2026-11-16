@@ -1,0 +1,1 @@
+Lightcones now recognize `gal_center_a` as a valid scale factor.
