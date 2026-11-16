@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import math
 from collections.abc import Callable
 from typing import TYPE_CHECKING, ClassVar, Protocol, cast
 
@@ -35,15 +36,18 @@ def make_cosmology(parameters: CosmologyParameters) -> FlrwCosmology:
     expected_arguments = inspect.signature(cosmology_type).parameters.keys()
     input_paremeters = {}
     for argname in expected_arguments:
-        try:
-            input_paremeters[argname] = getattr(parameters, argname)
-        except AttributeError:
-            continue
+        value = getattr(parameters, argname, None)
+        if value is not None:
+            input_paremeters[argname] = value
     return cosmology_type(**input_paremeters, meta={"sigma_8": parameters.sigma_8})
 
 
 def get_cosmology_type(parameters: CosmologyParameters) -> type[cosmology.Cosmology]:
-    is_flat = (parameters.Om0 + parameters.Ode0) == 1.0
+    # Flat astropy cosmologies derive Ode0 = 1 - Om0 - Or0, so radiation from Tcmb0
+    # does not enter this check.
+    is_flat = math.isclose(
+        parameters.Om0 + parameters.Ode0, 1.0, rel_tol=0.0, abs_tol=1e-12
+    )
     if parameters.w0 == -1 and parameters.wa == 0:
         if is_flat:
             return cosmology.FlatLambdaCDM
@@ -86,6 +90,7 @@ class CosmologyParameters(BaseModel, frozen=True):
     Om0: float = Field(ge=0.0, description="Total matter density", alias="omega_m")
     Ob0: float = Field(ge=0.0, description="Baryon density", alias="omega_b")
     Ode0: float = Field(ge=0.0, description="Dark energy density", alias="omega_l")
+    Tcmb0: float | None = Field(None, ge=0.0, description="CMB temperature at z=0 in K")
     Neff: float = Field(
         gt=0.0, description="Effective number of neutrinos", alias="n_eff_massless"
     )

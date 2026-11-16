@@ -112,6 +112,11 @@ def radec_from_thetaphi(theta, phi):
 
 
 def redshift_from_chi(chi: u.Quantity, cosmology):
+    if cosmology.has_massive_nu:
+        raise ValueError(
+            "Computing redshift from comoving distance is not supported for "
+            "cosmologies with massive neutrinos"
+        )
     distance = chi.to(u.Mpc, cu.with_H0(cosmology.H0))
 
     if len(distance) == 0:
@@ -121,7 +126,6 @@ def redshift_from_chi(chi: u.Quantity, cosmology):
         "h": cosmology.h,
         "Om0": cosmology.Om0,
         "Ode0": cosmology.Ode0,
-        "Ok0": cosmology.Ok0,
         "Or0": cosmology.Ogamma0 + cosmology.Onu0,
         "w0": getattr(cosmology, "w0", -1.0),
         "wa": getattr(cosmology, "wa", 0.0),

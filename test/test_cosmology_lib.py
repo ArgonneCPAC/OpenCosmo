@@ -25,7 +25,6 @@ def to_lib(cosmology: ac.FLRW):
         h=cosmology.h,
         Om0=cosmology.Om0,
         Ode0=cosmology.Ode0,
-        Ok0=cosmology.Ok0,
         Or0=cosmology.Ogamma0 + cosmology.Onu0,
         w0=getattr(cosmology, "w0", -1.0),
         wa=getattr(cosmology, "wa", 0.0),
@@ -114,3 +113,62 @@ def test_comoving_distance_grid_rejects_invalid_input(z_min, z_max, n):
     cosmology = to_lib(COSMOLOGIES["flat_lcdm"])
     with pytest.raises(ValueError):
         cosmology.comoving_distance_grid(z_min, z_max, n)
+
+
+def test_redshift_from_chi_rejects_massive_neutrinos():
+    cosmology = ac.FlatLambdaCDM(H0=70.0, Om0=0.3, Tcmb0=2.7255, m_nu=0.06 * u.eV)
+    with pytest.raises(ValueError, match="massive neutrinos"):
+        redshift_from_chi([100.0, 1000.0] * u.Mpc, cosmology)
+
+
+def test_comoving_distance_defaults_to_zero_lower_bound():
+    cosmology = to_lib(COSMOLOGIES["flat_lcdm"])
+    assert cosmology.comoving_distance(1.0) == cosmology.comoving_distance(0.0, 1.0)
+    assert cosmology.comoving_distance(1.0, 1.0) == 0.0
+
+
+@pytest.mark.parametrize(
+    ("z1", "z2"),
+    [(np.inf, None), (np.nan, None), (-0.5, None), (0.0, np.inf), (1.0, 0.5)],
+)
+def test_comoving_distance_rejects_invalid_redshifts(z1, z2):
+    cosmology = to_lib(COSMOLOGIES["flat_lcdm"])
+    with pytest.raises(ValueError, match="finite and non-negative"):
+        cosmology.comoving_distance(z1, z2)
+
+
+@pytest.mark.parametrize("bad", [np.inf, np.nan, -1.0])
+def test_comoving_distances_rejects_invalid_redshifts(bad):
+    cosmology = to_lib(COSMOLOGIES["flat_lcdm"])
+    with pytest.raises(ValueError, match="finite and non-negative"):
+        cosmology.comoving_distances(np.array([0.5, bad, 1.0]))
+
+
+@pytest.mark.parametrize(
+    "parameters",
+    [
+        {"h": 0.0, "Om0": 0.3},
+        {"h": np.nan, "Om0": 0.3},
+        {"h": 0.7, "Om0": -0.1},
+        {"h": 0.7, "Om0": 0.3, "Or0": np.inf},
+        {"h": 0.7, "Om0": 0.3, "Ode0": np.nan},
+        {"h": 0.7, "Om0": 0.3, "w0": np.inf},
+    ],
+)
+def test_make_cosmology_rejects_invalid_parameters(parameters):
+    with pytest.raises(ValueError):
+        cosmolib.make_cosmology(**parameters)
+
+
+def test_non_positive_expansion_rate_raises():
+    # Ode0 = 2 with no matter gives E(z)^2 = 2 - (1 + z)^2, negative above z ~ 0.41
+    cosmology = cosmolib.make_cosmology(h=0.7, Om0=0.0, Ode0=2.0)
+    assert np.isfinite(cosmology.comoving_distance(0.3))
+    with pytest.raises(ValueError, match="non-positive"):
+        cosmology.comoving_distance(1.0)
+    with pytest.raises(ValueError, match="non-positive"):
+        cosmology.comoving_distances(np.array([0.1, 1.0]))
+    with pytest.raises(ValueError, match="non-positive"):
+        cosmology.comoving_distance_grid(0.1, 1.0, 16)
+    with pytest.raises(ValueError):
+        cosmology.redshift_at_distance(1.0e5)

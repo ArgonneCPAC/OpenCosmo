@@ -11,29 +11,39 @@ const MAX_REDSHIFT: f64 = 1.0e4;
 const MAX_ITERATIONS: usize = 200;
 
 #[pyfunction]
-#[pyo3(signature = (h, Om0, Ode0 = None, Ok0 = None, Or0 = None, w0 = None, wa = None))]
+#[pyo3(signature = (h, Om0, Ode0 = None, Or0 = None, w0 = None, wa = None))]
 #[allow(non_snake_case)]
 fn make_cosmology(
     h: f64,
     Om0: f64,
     Ode0: Option<f64>,
-    Ok0: Option<f64>,
     Or0: Option<f64>,
     w0: Option<f64>,
     wa: Option<f64>,
 ) -> PyResult<Cosmology> {
-    if w0.is_none() && wa.is_some() {
-        return Err(PyValueError::new_err("w_a cannot be set if w_0 None"));
+    if !(h.is_finite() && h > 0.) {
+        return Err(PyValueError::new_err("h must be finite and positive"));
+    }
+    let Or0v = Or0.unwrap_or(0.);
+    if !(Om0.is_finite() && Om0 >= 0. && Or0v.is_finite() && Or0v >= 0.) {
+        return Err(PyValueError::new_err(
+            "Om0 and Or0 must be finite and non-negative",
+        ));
+    }
+    let Ode0v = Ode0.unwrap_or(1. - Om0 - Or0v);
+    let (w0v, wav) = (w0.unwrap_or(-1.), wa.unwrap_or(0.));
+    if !(Ode0v.is_finite() && w0v.is_finite() && wav.is_finite()) {
+        return Err(PyValueError::new_err("Ode0, w0, and wa must be finite"));
     }
 
     let cosmology = Cosmology {
         h,
         Om0,
-        Or0: Or0.unwrap_or(0.),
-        Ode0: Ode0.unwrap_or(1. - Om0),
-        Ok0: Ok0.unwrap_or(0.),
-        w0: w0.unwrap_or(-1.),
-        wa: wa.unwrap_or(0.),
+        Or0: Or0v,
+        Ode0: Ode0v,
+        Ok0: 1. - Om0 - Or0v - Ode0v,
+        w0: w0v,
+        wa: wav,
     };
 
     Ok(cosmology)
@@ -46,7 +56,7 @@ pub(crate) fn cosmology(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
-#[pyclass]
+#[pyclass(frozen)]
 #[allow(non_snake_case)]
 struct Cosmology {
     h: f64,
@@ -61,7 +71,7 @@ struct Cosmology {
 impl Cosmology {
     fn hubble_distance(&self) -> f64 {
         // Mpc
-        return C / 100_000. / self.h;
+        C / 100_000. / self.h
     }
 
     fn curvature_density(&self, z: f64) -> f64 {
@@ -74,15 +84,14 @@ impl Cosmology {
         self.Om0 * (1. + z).powi(3)
     }
     fn dark_energy_density(&self, z: f64) -> f64 {
-        return match (self.w0, self.wa) {
+        match (self.w0, self.wa) {
             (-1., 0.) => self.Ode0,
             (w, 0.) => self.Ode0 * (1. + z).powf(3. * (1. + w)),
-            (0., _) => panic!(),
             (w0, wa) => {
                 let coeff = (-3. * wa * (1. - (1. / (1. + z)))).exp();
                 self.Ode0 * coeff * (1. + z).powf(3. * (1. + w0 + wa))
             }
-        };
+        }
     }
 
     fn e_(&self, z: f64) -> f64 {
@@ -108,10 +117,9 @@ impl Cosmology {
         let h = (u2 - u1) / panels as f64;
 
         let mut sum = self.log_integrand(u1) + self.log_integrand(u2);
-        for i in 0..panels {
-            sum += 4. * self.log_integrand(u1 + (i as f64 + 0.5) * h);
-        }
+        sum += 4. * self.log_integrand(u1 + 0.5 * h);
         for i in 1..panels {
+            sum += 4. * self.log_integrand(u1 + (i as f64 + 0.5) * h);
             sum += 2. * self.log_integrand(u1 + i as f64 * h);
         }
         self.hubble_distance() * sum * h / 6.
@@ -183,19 +191,20 @@ impl Cosmology {
 
 #[pymethods]
 impl Cosmology {
+    #[pyo3(signature = (z1, z2 = None))]
     fn comoving_distance(&self, z1: f64, z2: Option<f64>) -> PyResult<f64> {
-        if z1 < 0. || z2.is_some_and(|z2_| z2_ < 0. || z2_ <= z1) {
+        let (lower, upper) = match z2 {
+            None => (0., z1),
+            Some(z2v) => (z1, z2v),
+        };
+        if !(lower.is_finite() && upper.is_finite()) || lower < 0. || upper < lower {
             return Err(PyValueError::new_err(
-                "Redshifts must be greater than zero, with z1 < z2",
+                "Redshifts must be finite and non-negative, with z1 <= z2",
             ));
         }
-        let (z1_, z2_) = match (z1, z2) {
-            (z1v, None) => (0., z1v),
-            (z1v, Some(z2v)) => (z1v, z2v),
-        };
-        Ok(self.comoving_distance_unchecked(z1_, z2_))
+        finite_distance(self.comoving_distance_unchecked(lower, upper))
     }
-    pub(crate) fn comoving_distances<'py>(
+    fn comoving_distances<'py>(
         &self,
         py: Python<'py>,
         redshifts: &Bound<'_, PyAny>,
@@ -224,6 +233,8 @@ impl Cosmology {
             return Err(PyValueError::new_err("Grid must have at least two points"));
         }
         let (z, chi) = self.comoving_distance_grid_unchecked(z_min, z_max, n);
+        // The grid is cumulative, so a non-finite value anywhere reaches the end
+        finite_distance(chi[n - 1])?;
         Ok((z.into_pyarray(py), chi.into_pyarray(py)))
     }
     fn redshift_at_distance(&self, distance: f64) -> PyResult<f64> {
@@ -234,5 +245,16 @@ impl Cosmology {
         }
         self.redshift_at_distance_unchecked(distance)
             .map_err(PyValueError::new_err)
+    }
+}
+
+// A non-finite distance means E(z)^2 <= 0 somewhere in the integration range
+fn finite_distance(distance: f64) -> PyResult<f64> {
+    if distance.is_finite() {
+        Ok(distance)
+    } else {
+        Err(PyValueError::new_err(
+            "Comoving distance is not finite; E(z)^2 is non-positive in this range",
+        ))
     }
 }
