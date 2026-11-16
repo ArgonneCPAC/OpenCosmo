@@ -15,6 +15,7 @@ from opencosmo.collection.lightcone import state as lcst
 from opencosmo.column import norm_cols
 from opencosmo.plugins.contexts import HookPoint
 from opencosmo.plugins.hook import hook
+from opencosmo.units.known import get_redshift_column, get_scale_factor_column
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -58,12 +59,10 @@ def _ensure_redshift_column(ctx: LightconeOpenCtx) -> LightconeOpenCtx:
         return ctx
     if "redshift" in state.columns:
         return ctx
-    elif "fof_halo_center_a" in state.columns:
-        z_col = 1 / oc.col("fof_halo_center_a") - 1
-    elif "gal_center_a" in state.columns:
-        z_col = 1 / oc.col("gal_center_a") - 1
-    elif "redshift_true" in state.columns:
-        z_col = oc.col("redshift_true")
+    elif (z_column := get_redshift_column(state.columns)) is not None:
+        z_col = oc.col(z_column)
+    elif (a_column := get_scale_factor_column(state.columns)) is not None:
+        z_col = 1 / oc.col(a_column) - 1
     elif "zp" in state.columns:
         z_col = oc.col("zp")
     elif "chi" in state.columns:

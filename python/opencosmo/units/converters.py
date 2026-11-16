@@ -7,6 +7,7 @@ import astropy.units as u
 from astropy.cosmology import units as cu
 
 from opencosmo.units import UnitConvention
+from opencosmo.units.known import get_redshift_column, get_scale_factor_column
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -20,9 +21,6 @@ if TYPE_CHECKING:
 
 type Converter = Callable[..., u.Quantity]
 type Transitions = dict[UnitConvention, Converter]
-
-KNOWN_SCALEFACTOR_COLUMNS = {"fof_halo_center_a", "gal_center_a"}
-KNOWN_REDSHIFT_COLUMNS = {"redshift", "redshift_true"}
 
 
 def get_unit_transitions(
@@ -177,20 +175,16 @@ def get_scale_factor(dataset: DatasetState, cosmology, redshift):
     from opencosmo.dataset import operations as dsops
 
     baseline = dsops.with_units(dataset, dataset.unit_handler.base_convention.value, {})
-    columns = set(baseline.columns)
-    for column in KNOWN_SCALEFACTOR_COLUMNS:
-        if column in columns:
-            col = dsops.get_data(
-                dsops.select(baseline, column), "numpy", wrap_single=True
-            )[column]
-            return col
+    if (a_column := get_scale_factor_column(baseline.columns)) is not None:
+        return dsops.get_data(
+            dsops.select(baseline, a_column), "numpy", wrap_single=True
+        )[a_column]
 
-    for column in KNOWN_REDSHIFT_COLUMNS:
-        if column in columns:
-            col = dsops.get_data(
-                dsops.select(baseline, column), "numpy", wrap_single=True
-            )[column]
-            return 1 / (1 + col)
+    if (z_column := get_redshift_column(baseline.columns)) is not None:
+        z = dsops.get_data(dsops.select(baseline, z_column), "numpy", wrap_single=True)[
+            z_column
+        ]
+        return 1 / (1 + z)
 
     return cosmology.scale_factor(redshift)
 
