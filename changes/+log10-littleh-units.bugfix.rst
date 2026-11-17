@@ -1,0 +1,1 @@
+Logarithmic columns whose units contain ``littleh`` (e.g. ``dex(solMass / littleh)``) now keep their logarithmic unit when converted out of the scalefree convention, instead of being exponentiated back to linear values. Logarithmic columns with distance units (e.g. ``dex(Mpc)``) now also receive the scale-factor correction when converted between comoving and physical conventions.
