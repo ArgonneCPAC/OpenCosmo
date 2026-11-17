@@ -4,6 +4,7 @@ from functools import cache, partial
 from typing import TYPE_CHECKING
 
 import astropy.units as u
+import numpy as np
 from astropy.cosmology import units as cu
 
 from opencosmo.units import UnitConvention
@@ -12,8 +13,6 @@ from opencosmo.units.known import get_redshift_column, get_scale_factor_column
 if TYPE_CHECKING:
     from collections.abc import Callable
     from fractions import Fraction
-
-    import numpy as np
 
     from opencosmo.dataset.state import DatasetState
     from opencosmo.dtypes.cosmology import FlrwCosmology
@@ -49,7 +48,7 @@ def get_comoving_transitions(
 
     transitions: Transitions = {UnitConvention.SCALEFREE: error}
     inv_transitions: Transitions = {UnitConvention.SCALEFREE: error}
-    distance_power = get_unit_distance_power
+    distance_power = get_unit_distance_power(unit)
     if distance_power is not None and is_comoving:
         transitions[UnitConvention.PHYSICAL] = comoving_to_physical
         inv_transitions[UnitConvention.PHYSICAL] = partial(
@@ -116,7 +115,8 @@ def get_unit_without_h(unit: AnyUnit) -> AnyUnit:
 
 @cache
 def get_unit_distance_power(unit: AnyUnit) -> float | Fraction | None:
-    decomposed = unit.decompose()
+    u_base = unit.physical_unit if isinstance(unit, u.LogUnit) else unit
+    decomposed = u_base.decompose()
     if not isinstance(decomposed, u.UnitBase):
         return None
     try:
@@ -140,7 +140,7 @@ def physical_to_comoving(
 ):
     power = get_unit_distance_power(base_unit)
     if power is not None:
-        return value / (scale_factor**power)
+        return __scale(value, scale_factor ** (-power))
     return value
 
 
@@ -171,8 +171,16 @@ def comoving_to_physical(
     power = get_unit_distance_power(unit)
     # multiply by the scale factor to the same power as the distance
     if power is not None:
-        return value * scale_factor**power
+        return __scale(value, scale_factor**power)
     return value
+
+
+def __scale(value: u.Quantity, factor: float | np.ndarray) -> u.Quantity:
+    # Scaling the physical value of a log quantity is an addition in log space
+    if isinstance(value.unit, u.LogUnit):
+        log_factor = u.Dex(np.log10(u.Quantity(factor, u.one).value))
+        return value + log_factor  # ty: ignore[invalid-return-type]  # astropy has no stubs; Quantity + Quantity is a Quantity
+    return value * factor
 
 
 def get_scale_factor(dataset: DatasetState, cosmology, redshift):

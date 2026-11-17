@@ -1037,3 +1037,30 @@ def test_log10_of_littleh_unit_roundtrip(input_path, tmp_path):
 
     back = reopened.with_units("physical").with_units("scalefree")
     assert np.allclose(back.get_data("numpy"), scalefree)
+
+
+def test_log10_of_distance_unit_conventions(test_data, tmp_path):
+    path = test_data.snapshot.alternate_step
+    base = oc.open(path).filter(oc.col("sod_halo_radius") > 0).take(100)
+    linear = {
+        convention: base.with_units(convention)
+        .select("sod_halo_radius")
+        .get_data("numpy")
+        for convention in ("scalefree", "comoving", "physical")
+    }
+
+    ds = base.select(log_r=oc.col("sod_halo_radius").log10())
+    oc.write(tmp_path / "log.hdf5", ds)
+    reopened = oc.open(tmp_path / "log.hdf5")
+
+    for convention, unit in (
+        ("scalefree", u.DexUnit(u.Mpc / cu.littleh)),
+        ("comoving", u.DexUnit(u.Mpc)),
+        ("physical", u.DexUnit(u.Mpc)),
+    ):
+        data = reopened.with_units(convention).get_data("astropy")
+        assert data.unit == unit
+        assert np.allclose(data.value, np.log10(linear[convention]))
+
+    back = reopened.with_units("physical").with_units("scalefree")
+    assert np.allclose(back.get_data("numpy"), np.log10(linear["scalefree"]))
