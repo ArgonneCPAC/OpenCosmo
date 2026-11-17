@@ -4,6 +4,7 @@ import astropy.units as u
 import numpy as np
 import opencosmo as oc
 import pytest
+from astropy.cosmology import units as cu
 from opencosmo.dataset import operations as dsops
 from opencosmo.io.discover import discover_file
 from opencosmo.io.io import open_state
@@ -1007,3 +1008,32 @@ def test_take_rows_rejects_duplicates(input_path):
     ds = oc.open(input_path)
     with pytest.raises(ValueError, match="must not contain duplicates"):
         ds.take_rows(np.array([3, 5, 3], dtype=np.int64))
+
+
+def test_log10_of_littleh_unit_roundtrip(input_path, tmp_path):
+    ds = (
+        oc.open(input_path)
+        .filter(oc.col("sod_halo_M500c") > 0)
+        .take(100)
+        .select(log_m500=oc.col("sod_halo_M500c").log10())
+    )
+    scalefree = ds.with_units("scalefree").get_data("numpy")
+    oc.write(tmp_path / "log.hdf5", ds)
+
+    reopened = oc.open(tmp_path / "log.hdf5")
+    h = reopened.cosmology.h
+
+    default = reopened.get_data("astropy")
+    assert default.unit == u.DexUnit(u.Msun)
+    assert np.allclose(default.value, scalefree - np.log10(h))
+
+    sf = reopened.with_units("scalefree").get_data("astropy")
+    assert sf.unit == u.DexUnit(u.Msun / cu.littleh)
+    assert np.allclose(sf.value, scalefree)
+
+    physical = reopened.with_units("physical").get_data("astropy")
+    assert physical.unit == u.DexUnit(u.Msun)
+    assert np.allclose(physical.value, scalefree - np.log10(h))
+
+    back = reopened.with_units("physical").with_units("scalefree")
+    assert np.allclose(back.get_data("numpy"), scalefree)

@@ -98,7 +98,7 @@ def get_scalefree_transitions(
 
 @cache
 def get_unit_without_h(unit: AnyUnit) -> AnyUnit:
-    u_base = unit.physical_unit if isinstance(unit, u.DexUnit) else unit
+    u_base = unit.physical_unit if isinstance(unit, u.LogUnit) else unit
     if not isinstance(u_base, u.UnitBase):
         return unit
 
@@ -107,7 +107,11 @@ def get_unit_without_h(unit: AnyUnit) -> AnyUnit:
     except ValueError:
         return unit
     power = u_base.powers[index]
-    return u_base / cu.littleh**power
+    hless = u_base / cu.littleh**power
+    if isinstance(unit, u.LogUnit):
+        # Re-wrap so log-valued data is not exponentiated by Quantity.to
+        return type(unit)(hless, unit.function_unit)
+    return hless
 
 
 @cache
