@@ -16,6 +16,18 @@ OpenCosmo reads structured HDF5 simulation products and exposes their units,
 cosmology, spatial indices, and relationships through immutable Python objects.
 Use only the public API (`import opencosmo as oc`); do not read raw HDF5 datasets directly as a workaround.
 
+## Verification (always run first)
+
+Always check OpenCosmo is installed, and that its version matches the version in this skill metadata. Do the following:
+
+
+```bash
+python -c "import opencosmo; print(opencosmo.__version__)"
+```
+
+If the major or minor version of the library does not match the the version in the skill metadata, warn the user about the mismatch but continue.
+
+
 ## Workflow: plan the query before materializing
 
 1. **Open and identify the abstraction.** `oc.open(*paths)` discovers the layout;
