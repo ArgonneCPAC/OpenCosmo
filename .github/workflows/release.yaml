@@ -131,6 +131,13 @@ jobs:
           name: wheels-${{ matrix.target }}
           path: dist/
 
+  skill:
+    needs: prepare
+    uses: ./.github/workflows/skill.yaml
+    with:
+      ref: ${{ inputs.version }}
+      version: ${{ inputs.version }}
+
   publish:
     needs: build-wheels
     runs-on: ubuntu-latest
@@ -149,7 +156,7 @@ jobs:
         run: uv publish --token ${{ secrets.PYPI_TOKEN }}
 
   github-release:
-    needs: [publish, prepare]
+    needs: [publish, prepare, skill]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -160,6 +167,12 @@ jobs:
           pattern: wheels-*
           path: dist/
           merge-multiple: true
+
+      - name: Download skill archive
+        uses: actions/download-artifact@v8
+        with:
+          name: skill
+          path: dist/
 
       - name: Download release notes
         uses: actions/download-artifact@v8

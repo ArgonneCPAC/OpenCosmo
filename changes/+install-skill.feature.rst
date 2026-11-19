@@ -1,0 +1,1 @@
+OpenCosmo now ships a curated skill, which can be added to your agent with ``opencosmo install-skill <agent> [--local]``. Use `--local` to only install the skill for the local project, otherwise the install is global. The version of the skill will match the version of the library you have installed, starting with 1.5.0.

@@ -1,0 +1,52 @@
+name: skill
+# Packages the agent skill as `opencosmo-skill.tar.gz`, the asset that
+# `opencosmo install-skill` downloads from the GitHub release for its version.
+# The archive has a single top-level `opencosmo-library/` directory.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to package (defaults to the triggering ref).
+        default: ''
+        required: false
+        type: string
+      version:
+        description: If set, fail unless the skill's metadata matches this version.
+        default: ''
+        required: false
+        type: string
+
+jobs:
+  package:
+    name: Package skill
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          sparse-checkout: skill
+      - name: Check skill version metadata
+        if: ${{ inputs.version != '' }}
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          # bump-my-version writes pre-releases as 1.5.0-b1; the tag is 1.5.0b1.
+          declared=$(sed -n 's/^  opencosmo-version: "\(.*\)"$/\1/p' skill/SKILL.md | tr -d '-')
+          if [ "$declared" != "$VERSION" ]; then
+            echo "skill/SKILL.md declares '$declared', expected $VERSION" >&2
+            exit 1
+          fi
+      - name: Create archive
+        run: |
+          test -f skill/SKILL.md
+          mkdir -p dist
+          tar --sort=name --owner=0 --group=0 --numeric-owner --mtime='UTC 1970-01-01' \
+            --transform 's,^skill,opencosmo-library,' \
+            -czf dist/opencosmo-skill.tar.gz skill
+          tar -tzf dist/opencosmo-skill.tar.gz | head -5
+      - name: Upload skill archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: skill
+          path: dist/opencosmo-skill.tar.gz
+          if-no-files-found: error
