@@ -76,4 +76,23 @@ You can also write the particles of a :py:class:`StructureCollection <opencosmo.
 
 This will produce one parquet file for each particle type in the collection. 
 
+FITS
+^^^^
+
+Map cutouts produced by :py:meth:`opencosmo.Lightcone.cutouts` can be written to FITS files with :py:func:`opencosmo.io.write_cutout`:
+
+.. code-block:: python
+
+   import astropy.units as u
+   import opencosmo as oc
+   from opencosmo.io import write_cutout
+
+   lightcone = oc.open("lightcone.hdf5", "map.hdf5")
+   for i, cutout in enumerate(lightcone.cutouts(size=1 * u.deg, npix=64)):
+       write_cutout(f"cutout_{i}.fits", cutout)
+
+Each ``cutout`` is a ``(row, hdulist)`` tuple: the catalog row at the center of the cutout and an in-memory FITS HDU list with one image extension per map column. The row is stored as a one-row binary table extension named ``CENTER``, with units preserved for quantity values and scalar and vector values both supported. You can also pass a bare :py:class:`astropy.io.fits.HDUList` (for example from a map-only cutout), which is written without a ``CENTER`` extension. The input HDU list is never modified.
+
+By default, writing to a path that already exists raises :py:exc:`FileExistsError` before any file is created. Pass ``overwrite=True`` to replace an existing file. Astropy's FITS and table modules are imported only when writing; the reprojection helpers also import FITS and WCS lazily.
+
 
