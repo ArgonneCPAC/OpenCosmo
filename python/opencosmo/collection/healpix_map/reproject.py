@@ -1,6 +1,12 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, cast
+
 import numpy as np
-from astropy.io import fits
-from astropy.wcs import WCS
+
+if TYPE_CHECKING:
+    from astropy.io import fits
+    from astropy.wcs import WCS
 
 
 def make_hdulist(
@@ -11,11 +17,12 @@ def make_hdulist(
     angular_size: float,
     npix: int,
 ) -> fits.HDUList:
+    from astropy.io import fits
+
     reprojected_data = reproject_to_cartesian(
         region_pixels, region_data, nside, center, angular_size, npix
     )
-    wcs = reprojected_data.pop("wcs")
-    assert isinstance(wcs, WCS)
+    wcs = cast("WCS", reprojected_data.pop("wcs"))
     header = wcs.to_header()
     extensions = [
         fits.ImageHDU(data=data, header=header, name=name)
@@ -33,6 +40,7 @@ def reproject_to_cartesian(
     resolution: int,
 ) -> dict[str, np.ndarray | WCS]:
     import healpy as hp
+    from astropy.wcs import WCS
 
     wcs = WCS(naxis=2)
     wcs.wcs.ctype = ["RA---TAN", "DEC--TAN"]

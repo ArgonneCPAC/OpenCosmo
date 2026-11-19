@@ -1,5 +1,6 @@
 import hdf5plugin  # noqa: F401
 
+from .fits import write_cutout
 from .io import open, write
 
 
@@ -7,7 +8,7 @@ def missing_package_import_error(name, required):
     raise ValueError(f"Function {name} requires package {required}")
 
 
-__all__ = ["open", "write", "write_parquet"]
+__all__ = ["open", "write", "write_cutout", "write_parquet"]
 
 
 def __getattr__(name):

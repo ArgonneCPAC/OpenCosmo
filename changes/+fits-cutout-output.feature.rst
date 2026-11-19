@@ -1,0 +1,1 @@
+Add standalone ``opencosmo.io.write_cutout`` for map and lightcone cutouts, embedding central-object catalog values and units in a ``CENTER`` table extension. Import FITS and WCS lazily in the cutout output and reprojection paths.
