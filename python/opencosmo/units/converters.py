@@ -146,12 +146,19 @@ def remove_littleh(value: u.Quantity, cosmology: FlrwCosmology, **kwargs) -> u.Q
     coordinates, this is the second step after parsing the units themselves.
     """
     new_unit = get_unit_without_h(value.unit)
-    if new_unit != value.unit:
-        return value.to(
-            new_unit,
-            cu.with_H0(cosmology.H0),
-        )
-    return value
+    if new_unit == value.unit:
+        return value
+    if isinstance(value.unit, u.UnitBase) and isinstance(new_unit, u.UnitBase):
+        # Preserve Astropy's division rounding, but omit its final multiply by 1.
+        # Attach the unit only to the newly allocated division result.
+        equivalency_unit = cu.with_H0(cosmology.H0)[0][0]
+        ratio = new_unit.decompose() / value.unit.decompose()
+        scale = ratio.decompose([equivalency_unit]).scale
+        return (value.value / scale) << new_unit
+    return value.to(
+        new_unit,
+        cu.with_H0(cosmology.H0),
+    )
 
 
 def comoving_to_physical(

@@ -160,13 +160,18 @@ def instantiate_dataset(
         and col.uuid not in cached_uuids
         and col.name in {name for (_, name) in required_pairs}
     ]
-    raw_data = raw_data_handler.get_data({col.name for col in raw_columns})
+    # Own the dictionary before replacing entries; do not copy its arrays.
+    raw_data = dict(raw_data_handler.get_data({col.name for col in raw_columns}))
     for column in raw_columns:
         if column.alias is None:
             continue
         raw_data[column.alias] = raw_data[column.name]
 
-    raw_data = unit_handler.apply_raw_units(raw_data, unit_kwargs)
+    # Release converted columns' raw buffers before converting the next column.
+    for name in raw_data:
+        raw_data[name] = unit_handler.apply_raw_units(
+            {name: raw_data[name]}, unit_kwargs
+        )[name]
 
     uuid_data = build_initial_uuid_data(column_producers, raw_data, cached_data)
     new_derived = build_derived_columns(

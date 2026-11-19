@@ -1,0 +1,1 @@
+Materializing dataset columns now applies unit conversions one column at a time, releasing each raw buffer as soon as its converted replacement exists, and ``remove_littleh`` divides the raw values directly so the new unit attaches to the freshly allocated result. Peak transient memory during ``get_data`` is reduced accordingly.
