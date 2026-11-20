@@ -42,3 +42,6 @@ filename = "docs/source/conf.py"
 
 [[tool.bumpversion.files]]
 filename = "Cargo.toml"
+
+[[tool.bumpversion.files]]
+filename = "skill/SKILL.md"
