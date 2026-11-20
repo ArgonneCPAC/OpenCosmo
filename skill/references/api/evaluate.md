@@ -2,7 +2,7 @@
 
 ## Use case
 Run a Python function over a dataset when the result is **not** a simple
-algebraic expression (use [with_new_columns](with_new_columns.md) for those).
+algebraic expression (use [select](select.md#adding-columns) with `"*"` for those).
 OpenCosmo selects only the columns the function needs.
 
 ## Dataset
@@ -29,7 +29,7 @@ ds.evaluate_to_dataset(func, vectorize=False, format="astropy", batch_size=-1,
   returned (no sample-row call).
 - Computed outputs are stored as numpy arrays or Quantities and are **not
   unit-aware**: they do **not** change under [with_units](with_units.md)
-  conversions. Use `with_new_columns` expressions when you need unit-aware
+  conversions. Use `select("*", ...)` expressions when you need unit-aware
   lazy columns.
 - Row-wise array outputs: with `insert=True` each row's array is one entry of
   a (possibly multidimensional) column (stacked); with `insert=False` per-row
@@ -126,7 +126,7 @@ values = ds_e.select("fgas_residual").get_data("numpy")
 # log10 of a mass column is a column expression, not an evaluate callback.
 # Mask non-positive sentinel masses first, since their log is undefined:
 positive = sub.filter(oc.col("sod_halo_M500c") > 0)
-log_mass = positive.with_new_columns(log_m=oc.col("sod_halo_M500c").log10())
+log_mass = positive.select("*", log_m=oc.col("sod_halo_M500c").log10())
 
 
 # New dataset from arbitrary-length output (evaluated immediately).
@@ -193,5 +193,5 @@ res2 = coll.evaluate_on_dataset(
   materialization.
 - `evaluate` is **not** a bypass of lazy evaluation: `insert=True` stays lazy
   (but not unit-aware); only `insert=False` is eager.
-- Prefer managed ops (`filter`, `select`, expressions via `with_new_columns`)
+- Prefer managed ops (`filter`, `select`, expressions via `select`)
   over `evaluate` when possible.

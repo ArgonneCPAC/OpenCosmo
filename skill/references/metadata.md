@@ -25,8 +25,7 @@ if missing:
 These describe the **current logical object**, not necessarily every on-disk
 column. `select` changes visible names; expressions can supply inferred units;
 `with_units` changes current units. Unitless columns normally have `None`.
-Descriptions may be absent. For supplied arrays, descriptions can be registered
-with `with_new_columns(descriptions={"new_name": "meaning"}, ...)`.
+Descriptions may be absent, including for columns created with `select`.
 
 Metadata is not a substitute for validating data (sentinels, finite values,
 empty samples). Only read values when that validation is necessary.

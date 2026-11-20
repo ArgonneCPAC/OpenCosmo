@@ -65,9 +65,9 @@ needs immediately; it does not fetch every visible column.
 ## Projection and registration
 
 - `select("mass", derived=expr)` retains the specified names and derived output.
-- `select("*", derived=expr)` retains **all** columns; use it only when needed.
-- `with_new_columns(derived=expr)` retains existing columns and supports explicit
-  descriptions/overwrite controls and array input. See its API reference.
+- `select("*", derived=expr)` retains **all** columns and adds the derived one; this
+  is how to add a column. Use it only when needed.
+- Derived names must not collide with existing columns (`ValueError`).
 - Register prerequisites in separate transformations when one new column needs
   another; reuse the expression itself when possible.
 - Bound expressions bind to the columns available when registered. Replacing a

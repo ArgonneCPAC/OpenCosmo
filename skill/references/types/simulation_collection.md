@@ -40,7 +40,6 @@ Most operations **map across all children** and return a new collection
 
 - `filter(*masks, **kwargs)`, `select`, `drop`, `take(n, at, mode)`,
   `take_range`, `take_rows`, `sort_by`, `bound(region)`, `with_units`,
-  `with_new_columns(..., datasets=None, ...)`,
   `evaluate(func, datasets=None, insert=False, ...)`.
 - `datasets=` restricts an operation to named members only.
 

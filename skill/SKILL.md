@@ -145,14 +145,13 @@ Paths below are relative to this `SKILL.md`. Load only those needed for the task
 
 - [open](references/api/open.md): discovery, related files, lifetime, opening modes.
 
-- [select](references/api/select.md): projection, wildcards, derived names, routing.
+- [select](references/api/select.md): projection, wildcards, adding derived or array columns, routing.
 - [drop](references/api/drop.md): removal and type-specific signatures.
 - [filter](references/api/filter.md): masks, units, reduction thresholds, structures.
 - [take / take_range / take_rows](references/api/take.md): samples, ranges, ordering.
 - [sort_by](references/api/sort_by.md): sort keys and top-N queries.
 - [bound and region constructors](references/api/bound.md): geometry and exactness.
 - [with_units](references/api/with_units.md): conventions and explicit conversions.
-- [with_new_columns](references/api/with_new_columns.md): arrays, descriptions, routing.
 - [evaluate](references/api/evaluate.md): callbacks, vectorization/batching, linked
   evaluation, insertion versus returned results, `evaluate_to_dataset`.
 - [get_data](references/api/get_data.md): materialization, formats, unwrapping, units.

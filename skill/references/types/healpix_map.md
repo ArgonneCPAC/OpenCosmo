@@ -62,7 +62,7 @@ Like `Dataset.get_data`, a map with a **single remaining column is unwrapped**:
   per low-res pixel). Passing the **same nside is a no-op** (returns the same
   result); a **higher nside raises `ValueError`**.
 - Row/column ops mirror datasets: `filter`, `select`/`drop`,
-  `with_new_columns`, `take`/`take_range`/`take_rows`, `sort_by`, `rows()`,
+  `take`/`take_range`/`take_rows`, `sort_by`, `rows()`,
   `evaluate(func, format="numpy", ...)`.
 
 ```python

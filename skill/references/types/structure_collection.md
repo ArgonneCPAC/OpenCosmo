@@ -66,8 +66,8 @@ Column ops are routed per dataset:
 - `select(*columns, mode="global", **per_dataset_columns)` — kwargs keyed by
   dataset name (dot paths like `"galaxies.star_particles"` for nested) select
   or derive columns in that dataset.
-- `drop(...)`, `with_new_columns(dataset=..., **columns)`,
-  `with_units(..., **dataset_conversions)` — same per-dataset routing.
+- `drop(...)`, `with_units(..., **dataset_conversions)` — same per-dataset
+  routing.
 - `bound(region)` works on **any** structure collection (snapshot-backed
   included); `cone_search` / `box_search` / `pixel_search` /
   `with_redshift_range` are valid only on lightcone-backed collections.

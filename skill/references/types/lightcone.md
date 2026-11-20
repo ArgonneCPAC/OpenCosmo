@@ -69,7 +69,7 @@ lc = lc.select(
   `ValueError` otherwise).
 - Standard ops mirror `Dataset` but return `Lightcone`:
   `filter`, `select`/`drop`, `take`/`take_range`/`take_rows`, `sort_by`,
-  `with_units`, `with_new_columns`, `evaluate`, `rows`, `get_data`.
+  `with_units`, `evaluate`, `rows`, `get_data`.
 
 Empty results keep structure: filtering to zero rows keeps all steps
 (`len(lc) == 0`) rather than erroring.

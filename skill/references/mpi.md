@@ -30,7 +30,7 @@ exception rather than leaving peer ranks waiting.
 
 | Operation | Default behavior |
 |---|---|
-| `filter`, `select`, `with_new_columns` | `mode="global"` attaches cross-rank reducers; ordinary elementwise work remains local |
+| `filter`, `select` | `mode="global"` attaches cross-rank reducers; ordinary elementwise work remains local |
 | `take`, `take_range` | `mode="local"`: count/range per rank; explicit `"global"` uses the distributed row space |
 | `take_rows` | No `mode`; supplied positions are local |
 | Standard `get_data` | Local selected rows; selected global scalars are globally reduced |

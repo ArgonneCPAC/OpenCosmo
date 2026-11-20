@@ -62,7 +62,8 @@ Key signatures:
   [../expressions.md](../expressions.md). `mode` controls how scalar reductions
   inside masks are computed under MPI; see [../mpi.md](../mpi.md).
 - `select(*columns, mode="global", **derived_columns)` / `drop(*columns)` —
-  positional names support wildcards; keyword args add expression columns.
+  positional names support wildcards; keyword args add expression or array
+  columns (`select("*", new=expr)` keeps all existing columns).
 - `take(n, at="start"|"end"|"random", mode="local")`,
   `take_range(start, end, mode="local")`, `take_rows(rows)`.
 - `sort_by(column, invert=False)` — `sorted_by` then reports the column.
@@ -71,8 +72,6 @@ Key signatures:
 - `with_units(convention=None, conversions=None, **columns)` — conventions:
   `"scalefree"`, `"comoving"`, `"physical"`, `"unitless"`; per-column unit
   overrides via kwargs.
-- `with_new_columns(**columns, descriptions=None, ...)` — add columns from
-  expressions or arrays without a Python callback.
 - `evaluate(func, vectorize=False, insert=True, format="astropy", batch_size=-1)` —
   managed row/batch computation with automatic column selection; `insert=False`
   returns a dict instead of a new dataset. `evaluate_to_dataset` allows

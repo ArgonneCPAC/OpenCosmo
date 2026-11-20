@@ -68,4 +68,4 @@ data = query.get_data()  # only if needed locally
 Files open in the **comoving** convention by default. `.with_units("physical")`
 and `.with_units("unitless")` work; `.with_units("scalefree")` raises
 `ValueError` for these catalogs. Derived columns from redshift (e.g. absolute
-magnitudes) work via `select`/`with_new_columns` as usual.
+magnitudes) work via `select` as usual.
