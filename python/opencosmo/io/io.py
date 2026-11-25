@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from opencosmo.collection.simulation.state import SimulationState
     from opencosmo.collection.structure.state import StructureState
     from opencosmo.dataset.state import DatasetState
-    from opencosmo.power_spectrum import PowerSpectrum
+    from opencosmo.static import PowerSpectrum
 
     from .protocols import Writeable
 
@@ -151,7 +151,7 @@ def open(
     """
     # Deferred: opencosmo.io is imported while the facades are still initializing.
     from opencosmo import facade
-    from opencosmo.power_spectrum import PowerSpectrum
+    from opencosmo.static import PowerSpectrum
 
     opened = open_state(*files, mpi_mode=mpi_mode, **open_kwargs)
     # A power spectrum is read eagerly into its user-facing object; it has no

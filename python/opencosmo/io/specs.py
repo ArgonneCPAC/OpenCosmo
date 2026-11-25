@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from opencosmo.io.discover import GroupLayout
     from opencosmo.io.index_spec import IndexSpec
     from opencosmo.io.iopen import DatasetTarget
-    from opencosmo.power_spectrum import PowerSpectrum
+    from opencosmo.static import PowerSpectrum
 
     type SpecState = (
         DatasetState
@@ -418,7 +418,7 @@ class PowerSpectrumSpec:
         is_empty_ref: bool,
         open_kwargs: dict[str, Any],
     ) -> SpecState:
-        from opencosmo.power_spectrum.power_spectrum import read_power_spectrum
+        from opencosmo.static.power_spectrum import read_power_spectrum
 
         return read_power_spectrum(targets[0])
 
