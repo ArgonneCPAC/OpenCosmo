@@ -274,8 +274,7 @@ def create_yt_dataset(
 
 
 def _mmw(field, data):
-    # Recompute mean molecular weight. The "mu" field currently stored
-    # is 1.0 with units of kg, which is wrong.
+    # Recompute mean molecular weight.
     Y = data["gas", "yhe"].d
     X = 1 - Y
     Z = data["gas", "zmet"].d * solar_metallicity

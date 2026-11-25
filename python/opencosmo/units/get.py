@@ -7,7 +7,6 @@ import astropy.cosmology.units as cu
 import astropy.units as u
 
 # m_p is injected into astropy.constants at runtime, so no static tool can see it.
-from astropy.constants import m_p  # ty: ignore[import-not-found]
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -42,7 +41,6 @@ KNOWN_UNITS = {
     "Msun/h / (comoving Mpc/h)^3": (u.Msun / cu.littleh) / (u.Mpc / cu.littleh) ** 3,
     "Msun/h * km/s": (u.Msun / cu.littleh) * (u.km / u.s),
     "H0^-1": (u.s * (1 * u.Mpc).to(u.km).value).to(u.Gyr) / (100 * cu.littleh),
-    "m_hydrogen": m_p,
     "Msun * (km/s)^2": (u.Msun) * (u.km / u.s) ** 2,
 }
 
