@@ -43,7 +43,7 @@ def ParticleProjectionPlot(
         A ParticleProjectionPlot object containing the particle projection plot.
     """
     # ParticleProjectionPlot is a factory class that yt's source types as its return value
-    return yt.ParticleProjectionPlot(*args, **kwargs)  # ty: ignore[invalid-return-type]
+    return yt.ParticleProjectionPlot(*args, **kwargs)  # ty: ignore[invalid-explicit-return]
 
 
 def ProjectionPlot(*args, **kwargs) -> NormalPlot:

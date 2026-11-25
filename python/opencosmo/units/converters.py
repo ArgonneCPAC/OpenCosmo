@@ -179,7 +179,7 @@ def __scale(value: u.Quantity, factor: float | np.ndarray) -> u.Quantity:
     # Scaling the physical value of a log quantity is an addition in log space
     if isinstance(value.unit, u.LogUnit):
         log_factor = u.Dex(np.log10(u.Quantity(factor, u.one).value))
-        return value + log_factor  # ty: ignore[invalid-return-type]  # astropy has no stubs; Quantity + Quantity is a Quantity
+        return value + log_factor  # ty: ignore[invalid-explicit-return]  # astropy has no stubs; Quantity + Quantity is a Quantity
     return value * factor
 
 
