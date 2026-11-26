@@ -22,7 +22,6 @@ from opencosmo.io.specs import group_by_scope, match_spec
 from opencosmo.mpi import get_comm_world
 from opencosmo.plugins.contexts import DatasetOpenCtx, HookPoint
 from opencosmo.plugins.hook import fold
-from opencosmo.power_spectrum import PowerSpectrum
 from opencosmo.spatial.builders import from_model
 from opencosmo.spatial.index import (
     get_partitions_with_data,
@@ -31,6 +30,7 @@ from opencosmo.spatial.index import (
 )
 from opencosmo.spatial.protocols import Region2d
 from opencosmo.spatial.region import FullSkyRegion, HealpixRegion
+from opencosmo.static import PowerSpectrum
 from opencosmo.units import UnitConvention
 from opencosmo.utils import normalize_kwarg_name
 from opencosmo.uuid import get_column_uuid
